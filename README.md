@@ -165,7 +165,7 @@ bypasses the chat application needs *more* auditing, not less.
 ## Testing
 
 ```bash
-make test                     # 161 tests, offline, no API key, ~2s
+make test                     # 174 tests, offline, no API key, ~2s
 uv run pytest -m "not kafka"  # the pure layer, no Docker at all
 uv run pytest -m golden       # the 15-question regression suite
 cd web && npm run e2e         # Playwright
@@ -221,13 +221,29 @@ surface at all. If the executor trusts the enum, the governance claim is
 decorative, and it stays invisible until someone points Claude Desktop at the
 server and asks for `tip_amount` by name.
 
-Three more surfaced while building, all invisible from the server side: Vite's
-proxy silently buffers server-sent events, so a stream that is byte-perfect
-under `curl` delivers zero frames in the browser; importing `echarts-for-react`
-from its CJS subpath comes through Vite's interop as `{ default: fn }` and React
-reports only a minified "invalid element type"; and `vite preview` binds
-`localhost`, which resolves to IPv6, so a `127.0.0.1` health check never
-connects.
+Several more surfaced while building, none visible from the server side and
+several of which reported themselves *healthy*:
+
+- Vite's proxy silently buffers server-sent events, so a stream that is
+  byte-perfect under `curl` delivers zero frames in the browser.
+- Importing `echarts-for-react` from its CJS subpath comes through Vite's
+  interop as `{ default: fn }`, and React reports only a minified "invalid
+  element type".
+- `@mcp.tool()` validates arguments *before* the handler runs and cannot supply
+  Pydantic's validation context, so annotating a wrapper with a scope-aware
+  model fails every call while `tools/list` still returns all eight tools.
+- The Kafka producer was built under a separate `asyncio.run()` and then used
+  from the loop `mcp.run()` starts, so every MCP call hung in
+  `force_metadata_update` with a traceback pointing at Kafka rather than the
+  loop.
+- `VOLUME ["/app/data/raw"]` in a Dockerfile shadows a bind mount of the parent
+  `/app/data`, so the seed service re-downloaded 180 MB it already had.
+- Compose's `KEY: ${VAR:-}` sets an *empty string* rather than leaving the
+  variable unset, so an empty signing key overrode the default and every login
+  returned 500 — while the container reported itself healthy, because
+  `/api/ready` had no checks in it. Readiness that always passes is worse than
+  none; it now issues and verifies a token, runs a real query, and confirms the
+  catalogue and the producer.
 
 ## Layout
 
