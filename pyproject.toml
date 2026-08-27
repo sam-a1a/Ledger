@@ -82,6 +82,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]        # assert is the point
 "scripts/**" = ["S101"]
+# Exploration code interpolates local Paths into SQL to inspect files one at a
+# time. Not a query surface, and nothing model-controlled reaches it.
+"notebooks/**" = ["S608", "E402"]
 
 # ---------------------------------------------------------------- mypy
 
@@ -107,6 +110,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "ai_live: hits the real Anthropic API; needs ANTHROPIC_API_KEY. Excluded by default.",
+    "kafka: needs a live broker (session Testcontainers fixture, or LEDGER_KAFKA_BOOTSTRAP).",
+    "kafka_isolated: needs its own topics rather than the shared session ones.",
     "golden: golden-question regression suite.",
     "slow: takes more than a couple of seconds.",
 ]
