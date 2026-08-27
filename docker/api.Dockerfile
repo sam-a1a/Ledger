@@ -21,9 +21,11 @@ COPY scripts ./scripts
 COPY data/catalog ./data/catalog
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
-# The dataset is seeded into a volume, never baked into the image: it is
-# ~180 MB and changes on a different cadence from the code.
-VOLUME ["/app/data/raw"]
+# Deliberately no VOLUME for the data directory. Declaring one at
+# /app/data/raw creates an anonymous volume that shadows a bind mount of the
+# *parent* /app/data -- so the container sees an empty directory and the seed
+# service re-downloads 180 MB that is already on the host, with no error to
+# explain why. Compose provides the mount instead.
 
 EXPOSE 8000
 CMD ["uvicorn", "ledger.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
