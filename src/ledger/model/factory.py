@@ -43,4 +43,4 @@ def make_model_client(
         "Set ANTHROPIC_API_KEY to use %s.",
         settings.anthropic_model,
     )
-    return FakeModelClient(fake_responder)
+    return FakeModelClient(fake_responder, token_delay_ms=settings.fake_token_delay_ms)

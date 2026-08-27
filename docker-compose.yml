@@ -1,0 +1,125 @@
+name: ledger
+
+services:
+  kafka:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,PLAINTEXT_HOST://:29092,CONTROLLER://:9093"
+      # Two listeners are mandatory, not belt-and-braces. In-network clients
+      # reach kafka:9092; anything on the host -- pytest, a console consumer,
+      # the MCP server run from a terminal -- needs localhost:29092. A single
+      # listener works perfectly inside Compose and fails mysteriously outside
+      # it, which is the most common way this is misconfigured.
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
+    ports:
+      - "29092:29092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  seed:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command: >
+      sh -c "python -m scripts.fetch_data &&
+             ledger catalog build"
+    environment:
+      LEDGER_DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    environment:
+      LEDGER_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LEDGER_DATA_DIR: /app/data
+      LEDGER_CATALOG_MODE: offline
+      # Unset resolves to the scripted model, and the UI says so. Setting a key
+      # switches to the real one with no other change.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LEDGER_JWT_SECRET: ${LEDGER_JWT_SECRET:-}
+    ports:
+      # 8000 collides with almost everything; the container keeps it internally.
+      - "8077:8000"
+    volumes:
+      - ./data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/ready')"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+
+  mcp:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command: ["ledger-mcp", "--http", "--port", "8765"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    environment:
+      LEDGER_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LEDGER_DATA_DIR: /app/data
+      LEDGER_CATALOG_MODE: offline
+      LEDGER_MCP_ROLE: viewer
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./data:/app/data:ro
+
+  jupyter:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command: >
+      sh -c "uv pip install --system jupyterlab &&
+             jupyter lab --ip 0.0.0.0 --no-browser --allow-root
+             --IdentityProvider.token='' --ServerApp.root_dir=/app"
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./data:/app/data:ro
+
+volumes:
+  kafka-data:

@@ -15,7 +15,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <option name="modulePath" value="ledger.api.app" />
     <option name="appName" value="app" />
-    <option name="uvicornOptions" value="--reload --port 8000" />
+    <option name="uvicornOptions" value="--reload --port 8077" />
     <method v="2" />
   </configuration>
 </component>

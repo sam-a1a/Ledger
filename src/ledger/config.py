@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     anthropic_effort: str = "medium"
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     max_turns: int = 8
+    #: Milliseconds between token chunks from the scripted model. Zero in tests,
+    #: where speed matters; a small value for the demo and for the one E2E spec
+    #: that proves the answer renders incrementally rather than in one blob.
+    fake_token_delay_ms: int = 0
     show_thinking: bool = False
 
     # --- auth -------------------------------------------------------------
@@ -92,6 +96,16 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_ttl_seconds: int = 60 * 60 * 12
     auth_mode: AuthMode = AuthMode.DEV
+    #: Browser origins allowed to call the API cross-origin. Needed only in
+    #: development, where the app is served by Vite and talks to the API
+    #: directly -- in production nginx serves both from one origin and this
+    #: stays empty.
+    cors_origins: tuple[str, ...] = (
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+    )
     mcp_role: str = "viewer"
     mcp_tenant: str | None = None
 
