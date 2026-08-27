@@ -119,3 +119,30 @@ def test_images_are_built_for_both_architectures(release: dict[str, Any]) -> Non
             assert "linux/amd64" in platforms and "linux/arm64" in platforms
             return
     pytest.fail("no build-push step found")
+
+
+def test_the_published_tags_include_the_form_the_documentation_uses(
+    release: dict[str, Any],
+) -> None:
+    """The README and release notes tell people to pull `v0.1.0`.
+
+    `docker/metadata-action`'s `{{version}}` pattern strips the leading `v`, so
+    publishing only that form made every documented deploy command fail with
+    "not found". Both forms are published now, and this asserts it stays that
+    way, because the failure appears only after a release.
+    """
+    readme = (REPO / "README.md").read_text()
+    documented_v_prefixed = re.search(r"LEDGER_VERSION=v\d", readme) is not None
+
+    meta = next(
+        step
+        for step in release["jobs"]["build"]["steps"]
+        if step.get("uses", "").startswith("docker/metadata-action")
+    )
+    patterns = meta["with"]["tags"]
+
+    assert "type=semver,pattern={{version}}" in patterns
+    if documented_v_prefixed:
+        assert "type=semver,pattern=v{{version}}" in patterns, (
+            "the README documents a v-prefixed tag that the pipeline never publishes"
+        )
