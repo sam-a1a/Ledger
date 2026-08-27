@@ -64,9 +64,10 @@ export default defineConfig({
         LEDGER_DATA_DIR: `${REPO}tests/fixtures/data`,
         LEDGER_MODEL: "fake",
         LEDGER_CATALOG_MODE: "auto",
-        // A visible delay in exactly one place, so `chat.spec` can prove the
-        // answer renders incrementally rather than arriving as one blob.
-        LEDGER_FAKE_TOKEN_DELAY_MS: "12",
+        // Widens the streaming window so `chat.spec` can observe a turn
+        // mid-flight on a loaded runner. The assertion does not depend on the
+        // exact value -- this only makes the observation comfortable.
+        LEDGER_FAKE_TOKEN_DELAY_MS: "25",
       },
     },
     {

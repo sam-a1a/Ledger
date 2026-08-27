@@ -7,14 +7,24 @@ test.describe("streaming chat", () => {
     await page.getByTestId("send").click();
 
     const answer = page.getByTestId("answer");
+    const turn = page.getByTestId("assistant-turn");
 
-    // The distinction that matters: a non-streaming implementation would also
-    // end up with the right text. Only an incremental one grows while watched.
-    await expect.poll(async () => (await answer.textContent())?.length ?? 0).toBeGreaterThan(0);
-    const early = (await answer.textContent())?.length ?? 0;
-    await expect.poll(async () => (await answer.textContent())?.length ?? 0).toBeGreaterThan(early);
+    // The property, not a race: text must be painted *while the turn is still
+    // streaming*. An implementation that buffered the whole answer and rendered
+    // once would show nothing until the status flips to "done", so observing
+    // both facts together is enough — and unlike comparing two samples for
+    // growth, it does not depend on catching a ~200 ms window twice.
+    await expect
+      .poll(async () => {
+        const [status, text] = await Promise.all([
+          turn.getAttribute("data-status"),
+          answer.textContent(),
+        ]);
+        return status === "streaming" && (text ?? "").length > 0;
+      })
+      .toBe(true);
 
-    await expect(page.getByTestId("assistant-turn")).toHaveAttribute("data-status", "done");
+    await expect(turn).toHaveAttribute("data-status", "done");
     await expect(answer).toContainText("Manhattan");
   });
 
