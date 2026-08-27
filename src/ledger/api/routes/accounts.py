@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from ledger.accounts import avatars
 from ledger.accounts import service as accounts
 from ledger.accounts.passwords import MIN_PASSWORD_LENGTH, PasswordError
 from ledger.api.deps import SessionDep, UserDep
@@ -235,3 +237,75 @@ async def delete_account(
         )
     await accounts.delete_account(session, user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class UpdateProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, min_length=1, max_length=80)
+    preferences: dict[str, object] | None = None
+
+
+@router.patch("/me", response_model=AccountResponse)
+async def update_profile(
+    body: UpdateProfileRequest, user: UserDep, session: SessionDep
+) -> AccountResponse:
+    """Update the parts of a profile the account holder owns.
+
+    Role and tenant are absent by construction: they are granted, not chosen,
+    and an endpoint that accepted them would be a privilege-escalation path
+    however carefully it was guarded elsewhere.
+    """
+    if body.display_name is not None:
+        user.display_name = body.display_name.strip()[:80]
+    if body.preferences is not None:
+        merged = dict(user.preferences or {})
+        merged.update(body.preferences)
+        user.preferences = merged
+    await session.flush()
+    return to_account(user)
+
+
+@router.post("/me/avatar", response_model=AccountResponse)
+async def upload_avatar(
+    user: UserDep, session: SessionDep, file: Annotated[UploadFile, File()]
+) -> AccountResponse:
+    settings = get_settings()
+
+    # Read with a hard ceiling rather than trusting the declared length.
+    data = await file.read(avatars.MAX_UPLOAD_BYTES + 1)
+    if len(data) > avatars.MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"Images must be under {avatars.MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+        )
+
+    try:
+        processed = avatars.process(data)
+    except avatars.AvatarError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+
+    user.avatar_filename = avatars.store(settings.state_path, user.id, processed)
+    await session.flush()
+    return to_account(user)
+
+
+@router.get("/me/avatar")
+async def get_avatar(user: UserDep) -> FileResponse:
+    settings = get_settings()
+    if not user.avatar_filename:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No avatar set.")
+    path = avatars.path_for(settings.state_path, user.avatar_filename)
+    if not path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No avatar set.")
+    # Always PNG: it is re-encoded on upload, so the type is ours to state.
+    return FileResponse(path, media_type="image/png")
+
+
+@router.delete("/me/avatar", response_model=AccountResponse)
+async def delete_avatar(user: UserDep, session: SessionDep) -> AccountResponse:
+    settings = get_settings()
+    avatars.remove(settings.state_path, user.avatar_filename)
+    user.avatar_filename = None
+    await session.flush()
+    return to_account(user)

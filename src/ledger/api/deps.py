@@ -43,7 +43,7 @@ def get_principal(
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="missing bearer token; POST /api/auth/login to obtain one",
+            detail="missing bearer token; sign in at POST /api/accounts/signin",
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
