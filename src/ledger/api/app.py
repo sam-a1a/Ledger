@@ -9,26 +9,79 @@ from fastapi import FastAPI
 
 from ledger import __version__
 from ledger.api.routes import health
-from ledger.config import get_settings
+from ledger.api.state import AppState
+from ledger.catalog import store as catalog_store
+from ledger.config import Settings, get_settings
+from ledger.engine.duck import Engine
+from ledger.governance.journal import EventJournal
+from ledger.governance.publisher import KafkaAuditPublisher
+from ledger.governance.topics import connect_producer, ensure_topics, topics_for
 from ledger.logging import get_logger
 
 log = get_logger(__name__)
+
+
+async def build_state(settings: Settings) -> AppState:
+    """Construct every process-wide resource, failing fast on any of them.
+
+    Order matters: the broker is contacted before the engine is opened, so a
+    misconfigured deployment fails on the thing it is actually missing rather
+    than after several seconds of parquet work.
+    """
+    topics = topics_for(settings)
+    producer = KafkaAuditPublisher.build_producer(settings)
+
+    # Kafka is a hard dependency. Ledger audits every tool call *before*
+    # serving it, so a broker it cannot reach is a startup failure, not a
+    # degraded mode. The retry window exists because a broker that has just
+    # passed a healthcheck can still refuse connections while electing a
+    # controller -- fail-fast without it looks like a flake.
+    await connect_producer(
+        producer,
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        timeout_s=settings.kafka_bootstrap_timeout_s,
+    )
+    await ensure_topics(settings.kafka_bootstrap_servers, topics)
+
+    journal = EventJournal(settings.data_dir / "audit" / "journal.ndjson")
+    publisher = KafkaAuditPublisher(producer, topics, journal)
+    replayed = await publisher.drain_journal()
+    if replayed:
+        log.info("replayed %d event(s) journalled during an earlier outage", replayed)
+
+    engine = Engine.create(settings)
+    catalog = catalog_store.load_for_startup(settings)
+
+    return AppState(
+        settings=settings,
+        engine=engine,
+        catalog=catalog,
+        publisher=publisher,
+        producer=producer,
+    )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     settings.validate_for_startup()
-    backend = settings.resolved_backend()
-    log.info("starting ledger %s (model backend: %s)", __version__, backend)
+
+    log.info("starting ledger %s", __version__)
     if settings.demo_mode:
         log.warning(
             "DEMO MODE: answers come from the scripted fake model, not a real LLM. "
             "Set ANTHROPIC_API_KEY to use %s.",
             settings.anthropic_model,
         )
-    yield
-    log.info("ledger shutting down")
+
+    state = await build_state(settings)
+    app.state.ledger = state
+    try:
+        yield
+    finally:
+        state.engine.close()
+        await state.producer.stop()
+        log.info("ledger shut down")
 
 
 def create_app() -> FastAPI:

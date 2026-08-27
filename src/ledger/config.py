@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     kafka_client_id: str = "ledger-api"
     kafka_consumer_group: str = "ledger-audit"
     kafka_request_timeout_ms: int = 5_000
+    #: How long to keep retrying a broker at startup before exiting non-zero.
+    #: Bounded retry, then fail -- not a degraded mode.
+    kafka_bootstrap_timeout_s: float = 30.0
 
     # --- limits -----------------------------------------------------------
     model_max_rows: int = 200
