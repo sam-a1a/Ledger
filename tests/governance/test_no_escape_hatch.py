@@ -66,3 +66,70 @@ def test_settings_expose_no_switch_to_turn_auditing_off() -> None:
         if re.search(r"(audit|governance|kafka).*(enabled|disabled|optional|off)", name, re.I)
     ]
     assert not suspicious, f"found a switch that could disable auditing: {suspicious}"
+
+
+# --------------------------------------------------------------------------
+# Regression: the API must start against a read-only dataset mount.
+# --------------------------------------------------------------------------
+
+
+def test_the_journal_does_not_create_its_directory_until_it_is_needed(
+    tmp_path: object,
+) -> None:
+    """Caught by the release smoke job, on the first genuinely clean deployment.
+
+    The API serves its dataset from a read-only mount, correctly. The journal
+    used to create its directory in `__init__`, and that directory sat inside
+    that mount -- so a clean deployment died at startup with a read-only
+    filesystem error. It never showed up locally because `data/audit/` already
+    existed on any machine that had run the consumer.
+
+    The journal is only written when the broker is unreachable, so creating
+    anything eagerly turns a rare degraded path into a startup requirement.
+    """
+    from pathlib import Path
+
+    from ledger.governance.journal import EventJournal
+
+    root = Path(str(tmp_path))
+    target = root / "does-not-exist-yet" / "journal.ndjson"
+
+    EventJournal(target)  # constructing must touch nothing
+    assert not target.parent.exists()
+
+
+def test_the_journal_creates_its_directory_when_it_actually_writes(
+    tmp_path: object,
+) -> None:
+    from pathlib import Path
+
+    from ledger.governance.events import PrincipalRef, requested
+    from ledger.governance.journal import EventJournal
+    from ledger.security.principal import Channel, Role
+
+    root = Path(str(tmp_path))
+    journal = EventJournal(root / "state" / "journal.ndjson")
+    journal.append(
+        requested(
+            principal=PrincipalRef(subject="u", role=Role.ANALYST),
+            channel=Channel.HTTP,
+            tool="count_rows",
+            args={},
+            call_id="c1",
+        )
+    )
+    assert journal.count() == 1
+
+
+def test_the_journal_path_is_configurable_away_from_the_dataset() -> None:
+    """Operational state and data have different lifetimes and permissions."""
+    from pathlib import Path
+
+    from ledger.config import Settings
+
+    default = Settings(data_dir=Path("/data"))
+    assert default.journal_path == Path("/data/audit/journal.ndjson")
+
+    separated = Settings(data_dir=Path("/data"), state_dir=Path("/state"))
+    assert separated.journal_path == Path("/state/journal.ndjson")
+    assert Path("/data") not in separated.journal_path.parents

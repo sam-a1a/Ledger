@@ -60,6 +60,7 @@ services:
       - LEDGER_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - LEDGER_DATA_DIR=/app/data
       - LEDGER_CATALOG_MODE=offline
+      - LEDGER_STATE_DIR=/app/state
       # Pass-through: present only if the host defines them.
       - ANTHROPIC_API_KEY
       - LEDGER_JWT_SECRET
@@ -75,7 +76,12 @@ services:
     ports:
       - "8077:8000"
     volumes:
+      # The dataset is read-only: the API must not write what it serves.
       - ./data:/app/data:ro
+      # ...but it still needs somewhere writable for the event journal, which
+      # is operational state rather than data. Without this the API cannot
+      # start on a clean deployment.
+      - ledger-state:/app/state
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/ready')"]
       interval: 5s
@@ -151,3 +157,4 @@ services:
 
 volumes:
   kafka-data:
+  ledger-state:

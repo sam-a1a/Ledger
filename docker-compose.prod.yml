@@ -55,12 +55,18 @@ services:
       - LEDGER_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - LEDGER_DATA_DIR=/app/data
       - LEDGER_CATALOG_MODE=offline
+      - LEDGER_STATE_DIR=/app/state
       # Pass-through: `KEY: ${VAR:-}` would set an empty string and override the
       # application default rather than falling back to it.
       - ANTHROPIC_API_KEY
       - LEDGER_JWT_SECRET
       - LEDGER_AUTH_MODE
-    volumes: ["ledger-data:/app/data:ro"]
+    volumes:
+      # Read-only dataset, plus somewhere writable for the event journal --
+      # operational state, which the API must be able to write even while it
+      # must not write the data it serves.
+      - "ledger-data:/app/data:ro"
+      - "ledger-state:/app/state"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/ready')"]
       interval: 10s
@@ -94,3 +100,4 @@ services:
 volumes:
   kafka-data:
   ledger-data:
+  ledger-state:

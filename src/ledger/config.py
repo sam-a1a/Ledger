@@ -157,6 +157,10 @@ class Settings(BaseSettings):
     kafka_topic_access_denied: str = "ledger.access-denied"
     kafka_client_id: str = "ledger-api"
     kafka_consumer_group: str = "ledger-audit"
+    #: Where unpublished events are journalled. Operational state, not dataset,
+    #: so it is configured separately: the API serves its data read-only and
+    #: must still be able to write here when the broker is unreachable.
+    state_dir: Path | None = None
     kafka_request_timeout_ms: int = 5_000
     #: How long to keep retrying a broker at startup before exiting non-zero.
     #: Bounded retry, then fail -- not a degraded mode.
@@ -174,6 +178,11 @@ class Settings(BaseSettings):
     @property
     def catalog_dir(self) -> Path:
         return self.data_dir / "catalog"
+
+    @property
+    def journal_path(self) -> Path:
+        base = self.state_dir if self.state_dir is not None else self.data_dir / "audit"
+        return base / "journal.ndjson"
 
     def resolved_backend(self) -> ModelBackend:
         """Collapse ``AUTO`` into a concrete backend."""
