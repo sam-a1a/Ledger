@@ -1,13 +1,8 @@
-from fastapi import FastAPI
+"""Entry point for the PyCharm FastAPI run configuration (``uvicorn main:app``).
 
-app = FastAPI()
+The application itself lives in :mod:`ledger.api.app`.
+"""
 
+from ledger.api.app import create_app
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}
+app = create_app()

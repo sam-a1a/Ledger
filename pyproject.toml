@@ -1,0 +1,123 @@
+[project]
+name = "ledger"
+version = "0.1.0"
+description = "Streaming LLM chat over governed data: typed tools, MCP, RBAC, and a Kafka governance spine."
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [{ name = "Sam", email = "BassamGhazaleh@proton.me" }]
+
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.4",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.15.0",
+    "sse-starlette==3.4.8",
+    "duckdb==1.5.5",
+    "pyarrow==25.0.1",
+    "aiokafka==0.14.0",
+    "pyjwt==2.13.0",
+    "anthropic==1.1.0",
+    "mcp==2.1.1",
+    "httpx==0.28.1",
+    "python-ulid==4.0.1",
+    "pyyaml==6.0.3",
+]
+
+[project.optional-dependencies]
+data = [
+    "pandas==3.0.5",
+    "jupyterlab==4.6.3",
+]
+
+[project.scripts]
+ledger = "ledger.cli:main"
+ledger-mcp = "ledger.mcp_server.server:main"
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "testcontainers[kafka]==4.15.0",
+    "ruff==0.16.4",
+    "mypy==2.3.1",
+    "types-pyyaml==6.0.12.20260815",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ledger"]
+
+# ---------------------------------------------------------------- ruff
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "N",         # pep8-naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "A",         # builtins shadowing
+    "C4",        # comprehensions
+    "SIM",       # simplify
+    "PTH",       # use pathlib
+    "RUF",       # ruff-specific
+    "ASYNC",     # async correctness
+    "S",         # bandit
+]
+ignore = [
+    "E501",   # line length is handled by the formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]        # assert is the point
+"scripts/**" = ["S101"]
+
+# ---------------------------------------------------------------- mypy
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+mypy_path = "src"
+packages = ["ledger"]
+plugins = []
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "aiokafka.*", "testcontainers.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------- pytest
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = "-m 'not ai_live' --strict-markers --strict-config"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "ai_live: hits the real Anthropic API; needs ANTHROPIC_API_KEY. Excluded by default.",
+    "golden: golden-question regression suite.",
+    "slow: takes more than a couple of seconds.",
+]
+
+[tool.coverage.run]
+source = ["src/ledger"]
+branch = true
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+]
