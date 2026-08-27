@@ -27,6 +27,15 @@ const KAFKA = process.env.LEDGER_KAFKA_BOOTSTRAP ?? "localhost:29092";
  * to do with the code. Reuse is therefore off, and the port is unshared.
  */
 const API_PORT = 8079;
+
+/**
+ * A database of its own. Account behaviour depends on how many accounts exist
+ * — the first one created becomes an analyst — so a suite inheriting rows from
+ * a previous run would pass or fail depending on what ran before it.
+ */
+const DATABASE_URL =
+  process.env.LEDGER_E2E_DATABASE_URL ??
+  "postgresql+asyncpg://ledger:ledger@localhost:5455/ledger_e2e";
 const REPO = new URL("..", import.meta.url).pathname;
 
 export default defineConfig({
@@ -50,6 +59,9 @@ export default defineConfig({
 
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 
+  // Empty schema before every run, for the reason above.
+  globalSetup: "./e2e/global-setup.ts",
+
   webServer: [
     {
       command: `uv run uvicorn ledger.api.app:app --host 127.0.0.1 --port ${API_PORT}`,
@@ -62,12 +74,16 @@ export default defineConfig({
       env: {
         LEDGER_KAFKA_BOOTSTRAP_SERVERS: KAFKA,
         LEDGER_DATA_DIR: `${REPO}tests/fixtures/data`,
-        LEDGER_MODEL: "fake",
+        // Any address at this domain signs up as an analyst, so a spec that
+      // needs one does not depend on running before every other spec.
+      LEDGER_ANALYST_EMAILS: "@analyst.example.com",
+      LEDGER_MODEL: "fake",
         LEDGER_CATALOG_MODE: "auto",
         // Widens the streaming window so `chat.spec` can observe a turn
         // mid-flight on a loaded runner. The assertion does not depend on the
         // exact value -- this only makes the observation comfortable.
         LEDGER_FAKE_TOKEN_DELAY_MS: "25",
+        LEDGER_DATABASE_URL: DATABASE_URL,
       },
     },
     {

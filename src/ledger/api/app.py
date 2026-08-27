@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -9,12 +11,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ledger import __version__
-from ledger.api.routes import accounts, audit, auth, chat, conversations, health
+from ledger.api.routes import accounts, audit, chat, conversations, health
 from ledger.api.state import AppState
 from ledger.catalog import store as catalog_store
 from ledger.config import REPO_ROOT, Settings, get_settings
 from ledger.db.session import create_engine, create_sessionmaker
 from ledger.engine.duck import Engine
+from ledger.errors import ConfigurationError
 from ledger.governance.journal import EventJournal
 from ledger.governance.publisher import KafkaAuditPublisher
 from ledger.governance.topics import connect_producer, ensure_topics, topics_for
@@ -76,17 +79,29 @@ async def _migrate(settings: Settings) -> None:
     sets `LEDGER_DATABASE_AUTO_MIGRATE=false` and runs `alembic upgrade head`
     as a deliberate step, because a schema change is not something that should
     happen as a side effect of a container restarting.
+
+    Run as a subprocess rather than in-process, for two reasons that both cost
+    an afternoon to find. Alembic's env.py calls `fileConfig`, which tears down
+    the existing logging configuration -- including the handler that would have
+    reported whatever went wrong next, so a failure after this point vanishes
+    and uvicorn exits with a bare code 3. And env.py opens its own event loop,
+    which does not belong inside the one already running the application.
     """
     import anyio
-    from alembic import command
-    from alembic.config import Config
 
-    def _run() -> None:
-        config = Config(str(REPO_ROOT / "alembic.ini"))
-        config.set_main_option("script_location", str(REPO_ROOT / "migrations"))
-        command.upgrade(config, "head")
-
-    await anyio.to_thread.run_sync(_run)
+    result = await anyio.run_process(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=str(REPO_ROOT),
+        env={**os.environ, "LEDGER_DATABASE_URL": settings.database_url},
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode(errors="replace").strip()[-800:]
+        raise ConfigurationError(
+            f"database migration failed:\n{detail}\n\n"
+            "Run `uv run alembic upgrade head` to see the full output, or set "
+            "LEDGER_DATABASE_AUTO_MIGRATE=false to manage the schema yourself."
+        )
     log.info("database schema is up to date")
 
 
@@ -130,12 +145,14 @@ def create_app() -> FastAPI:
             CORSMiddleware,
             allow_origins=list(settings.cors_origins),
             allow_credentials=False,
-            allow_methods=["GET", "POST", "OPTIONS"],
+            # PATCH and DELETE included: renaming, archiving, and deleting a
+            # conversation all use them, and a preflight that omits a method
+            # fails in the browser while every curl test passes.
+            allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=["Authorization", "Content-Type", "Accept"],
         )
 
     app.include_router(health.router, prefix="/api")
-    app.include_router(auth.router, prefix="/api/auth")
     app.include_router(chat.router, prefix="/api")
     app.include_router(audit.router, prefix="/api")
     app.include_router(accounts.router, prefix="/api/accounts")

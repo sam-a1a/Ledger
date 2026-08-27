@@ -6,6 +6,9 @@ Two rules run through all of it:
   reset behave identically for a known and an unknown address, in both response
   and timing. Otherwise the forms become an account-enumeration oracle, and the
   cost of getting that wrong is paid by the account holders rather than by us.
+* **Roles are assigned at signup and read from the account thereafter**, never
+  from the request. `LEDGER_ANALYST_EMAILS` promotes named operators; failing
+  that, the first account on an empty database becomes the analyst.
 * **The role is read from the account, never from the request.** The dev-login
   endpoint lets a caller pick a role, which is exactly why it is a development
   affordance and is refused in strict mode.
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from email_validator import EmailNotValidError, validate_email
@@ -22,6 +26,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ledger.accounts import passwords
+from ledger.config import get_settings
 from ledger.db.base import Conversation, OAuthIdentity, PasswordReset, User, utcnow
 from ledger.logging import get_logger
 from ledger.security.principal import Role
@@ -74,6 +79,44 @@ async def get_by_id(session: AsyncSession, user_id: str) -> User | None:
     return await session.get(User, user_id)
 
 
+def matches_allowlist(address: str, allowlist: Sequence[str]) -> bool:
+    """Whether an address is named by the analyst allowlist.
+
+    An entry is a full address, or a domain written with a leading `@`. Both
+    are compared lowercased -- the addresses are already normalised, but the
+    configured value is typed by a human into a `.env` file or a Compose
+    environment block, and a capitalised domain there should not silently
+    fail to match.
+    """
+    candidate = address.lower()
+    domain = candidate.rpartition("@")[2]
+    for raw in allowlist:
+        entry = raw.strip().lower()
+        if not entry:
+            continue
+        if entry.startswith("@"):
+            if domain == entry[1:]:
+                return True
+        elif candidate == entry:
+            return True
+    return False
+
+
+async def default_role(session: AsyncSession, address: str) -> Role:
+    """The role a new account gets when the caller does not name one.
+
+    Two rules, in order. The allowlist is how a real deployment promotes a
+    known operator without opening a database shell. The first-account rule is
+    the fallback that makes a clean clone usable: someone has to be able to
+    see everything, and on an empty database there is no one to ask.
+    """
+    if matches_allowlist(address, get_settings().analyst_emails):
+        return Role.ANALYST
+    # Subsequent accounts start restricted -- the safe default, and the
+    # interesting one for demonstrating the boundary.
+    return Role.ANALYST if await count_users(session) == 0 else Role.VIEWER
+
+
 async def count_users(session: AsyncSession) -> int:
     result = await session.execute(select(func.count()).select_from(User))
     return int(result.scalar_one())
@@ -96,10 +139,7 @@ async def sign_up(
 
     passwords.validate(password)
 
-    # The first account is the analyst, so a fresh deployment has someone who
-    # can see everything. Subsequent accounts start restricted -- the safe
-    # default, and the interesting one for demonstrating the boundary.
-    resolved = role or (Role.ANALYST if await count_users(session) == 0 else Role.VIEWER)
+    resolved = role or await default_role(session, address)
 
     user = User(
         email=address,

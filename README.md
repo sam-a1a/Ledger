@@ -8,12 +8,18 @@ tools over a profiled catalogue, the service executes them against DuckDB, and
 every call is published to a Kafka governance log **before** its result is
 served. Under every answer is a trace of exactly what ran.
 
-![The chat interface, with a chart and the tool trace](docs/img/trace.png)
+![The chat interface, with a chart and the tool trace](docs/img/chat.png)
 
 ```bash
 docker compose up          # no API key needed; the UI says so
 open http://localhost:5173
 ```
+
+Accounts, conversations you can come back to, archive, rename, and delete — and
+a settings page — all sit on top of that, because a governed system people
+actually use has to remember who asked what.
+
+![Reopening a past conversation](docs/img/conversations.png)
 
 ---
 
@@ -109,6 +115,56 @@ surface**, where a client hand-writes the call.
 
 ---
 
+## Accounts and conversations
+
+Sign up with an email and password, or reset it if you forget. Conversations
+persist, so a follow-up like *"now break that down by borough"* resolves against
+the previous turn. Past chats are listed, renameable, archivable, and deletable.
+
+![Settings](docs/img/settings.png)
+
+**Roles are assigned at signup and never taken from the request.** Addresses
+matching `LEDGER_ANALYST_EMAILS` become analysts — a full address, or a domain
+written `@example.com`. Failing that, the first account on an empty database
+becomes the analyst so a clean clone has someone who can see everything, and
+every later one starts as a viewer. Subdomains deliberately do not inherit a
+domain grant.
+
+```bash
+LEDGER_ANALYST_EMAILS="ops@example.com,@staff.example.com"
+```
+
+Three decisions in here are about governance rather than features:
+
+**History is reconstructed server-side and never accepted from the client.** A
+client able to replay arbitrary assistant turns could fabricate tool results the
+model then treats as its own findings — which would defeat the entire premise
+that it only ever sees what the tool layer returned.
+
+**Deleting a conversation does not delete the audit log.** The transcript
+belongs to the person; the record of what was queried belongs to the
+organisation. Deleting an account is the same: conversations go, the governance
+trail is kept and anonymised, so the calls stay auditable without staying
+attributable. The confirmation dialog says so, rather than implying otherwise.
+
+**Nothing reveals whether an email is registered.** Sign-in and password reset
+respond identically for a known and an unknown address — in body *and* in
+timing, which matters because Argon2 is deliberately slow enough for wall-clock
+to be the leak. A test asserts the ratio.
+
+Accounts live in Postgres, deliberately apart from the analytical store: DuckDB
+serves the dataset read-only and in-memory over parquet, which is what lets the
+API, the MCP server, and the audit consumer coexist. Application CRUD is a
+different problem from the typed tool boundary, so it uses SQLAlchemy and
+Alembic rather than the hand-written compiler — that compiler exists because
+that boundary *is* the project, and hand-rolling migrations would be worse code
+for no benefit.
+
+Avatar uploads are validated by decoding the bytes rather than trusting the
+declared type, capped before being read into memory, and **re-encoded** rather
+than stored as sent — which strips EXIF, including the GPS coordinates phone
+photos carry, and neutralises anything polyglot hiding behind an image header.
+
 ## The dataset
 
 NYC TLC yellow taxi, December 2024 through February 2025 — 10.7 million real
@@ -161,20 +217,34 @@ UI shows a demo-mode banner. The tool calls, governance events, and query
 results are all still real — only the model is faked. Setting a key switches to
 `claude-opus-5` with no other change.
 
-### MCP
+### Using it from Claude Code
 
-**Claude Code** needs no setup: a project-scoped `.mcp.json` is committed, so
-opening the repository offers the server and `claude mcp list` shows it. Approve
-it once and the eight tools are available in the session.
+The eight tools are exposed over the Model Context Protocol, so you can query
+this dataset from inside Claude Code — with the same typed boundary, the same
+role scoping, and the same audit trail as the web app.
+
+**No setup.** A project-scoped `.mcp.json` is committed, so opening the
+repository offers the server:
 
 ```bash
-docker compose up -d kafka   # the server audits every call, so it needs a broker
-claude mcp list              # ledger: uv run --directory . ledger-mcp
+docker compose up -d kafka   # every call is audited before it runs, so a broker is required
+claude mcp list
+#   ledger: uv run --directory . ledger-mcp - ⏸ Pending approval (run `claude` to approve)
 ```
 
-It connects as `viewer`. To explore the restricted columns too, change
-`LEDGER_MCP_ROLE` to `analyst` in `.mcp.json` — which is itself a demonstration
-of the RBAC boundary, since the tool results visibly change.
+Approve it once and ask questions directly:
+
+> *"Using the ledger tools, which pickup zones had the most trips in January?"*
+
+Claude calls `top_n`, gets a bounded result, and narrates it. It never sees a
+row, and the call is on the governance log before the answer comes back —
+`GET /api/audit` will show it, with `channel: "mcp"`.
+
+It connects as **`viewer`**, matching the server's own default: a stdio client
+has no authentication layer, so the restrictive role is the safe one. Change
+`LEDGER_MCP_ROLE` to `analyst` in `.mcp.json` and ask for tip data — the results
+visibly change, which is the access-control boundary demonstrated from outside
+the application entirely, with no model of ours in the loop.
 
 **Claude Desktop** takes the same server through its own config file:
 

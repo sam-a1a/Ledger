@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ledger.accounts import passwords, service
+from ledger.config import get_settings
 from ledger.db.base import PasswordReset, User
 from ledger.security.principal import Role
 
@@ -184,3 +185,46 @@ async def test_deleting_an_account_removes_it(session: AsyncSession) -> None:
     await session.flush()
     assert await service.get_by_email(session, "gone@example.com") is None
     assert (await session.execute(select(User))).scalars().all() == []
+
+
+@pytest.mark.parametrize(
+    ("address", "expected"),
+    [
+        ("ops@example.com", True),
+        ("OPS@example.com", True),  # entries are matched case-insensitively
+        ("someone@staff.example.com", True),  # domain entry
+        ("someone@other.example.com", False),
+        ("ops@evil.com", False),
+        # A subdomain must not inherit the parent domain's grant: anyone who
+        # can register `staff.example.com.evil.net` would otherwise promote
+        # themselves.
+        ("someone@sub.staff.example.com", False),
+        ("", False),
+    ],
+)
+def test_the_analyst_allowlist_matches_addresses_and_domains_only(
+    address: str, expected: bool
+) -> None:
+    allowlist = ("ops@example.com", "@staff.example.com", "  ")
+    assert service.matches_allowlist(address, allowlist) is expected
+
+
+@pytest.mark.postgres
+async def test_an_allowlisted_address_is_an_analyst_however_late_it_signs_up(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rule a deployment actually needs: promotion without a database shell.
+
+    Signup order decides the role only when nothing else does, so a deployment
+    is not forced to care about who reaches the form first.
+    """
+    await service.sign_up(session, email="first@example.com", password=PASSWORD)
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "analyst_emails", ("@staff.example.com",), raising=False)
+
+    late = await service.sign_up(session, email="late@staff.example.com", password=PASSWORD)
+    assert late.role == Role.ANALYST
+
+    other = await service.sign_up(session, email="other@example.com", password=PASSWORD)
+    assert other.role == Role.VIEWER
