@@ -76,6 +76,27 @@ services:
       retries: 24
       start_period: 10s
 
+  audit-consumer:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command: ["ledger-audit"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    environment:
+      LEDGER_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LEDGER_DATA_DIR: /app/data
+      LEDGER_CATALOG_MODE: offline
+    volumes:
+      # Writable, unlike the API's mount: this is the process that materialises
+      # the log. Its own failure domain, so a slow or crashed consumer cannot
+      # take chat down or backpressure the API's event loop.
+      - ./data:/app/data
+    restart: unless-stopped
+
   web:
     build:
       context: .
