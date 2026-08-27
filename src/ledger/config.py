@@ -17,7 +17,12 @@ from ledger.errors import ConfigurationError
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: Placeholder signing key. Safe only because `AuthMode.STRICT` rejects it.
-DEV_JWT_SECRET = "dev-secret-not-for-production"  # noqa: S105 - guarded, see Settings
+#: At least 32 bytes so HS256 meets RFC 7518 section 3.2 -- a shorter key works
+#: but PyJWT warns, and a warning nobody can act on is worse than none.
+DEV_JWT_SECRET = "ledger-development-signing-key-not-for-production"  # noqa: S105
+
+#: RFC 7518 section 3.2: an HMAC key should be at least as long as the digest.
+MIN_JWT_SECRET_BYTES = 32
 
 
 class ModelBackend(StrEnum):
@@ -73,6 +78,9 @@ class Settings(BaseSettings):
     # --- model ------------------------------------------------------------
     model_backend: ModelBackend = Field(default=ModelBackend.AUTO, alias="LEDGER_MODEL")
     anthropic_model: str = "claude-opus-5"
+    #: low | medium | high | xhigh | max. Medium suits a tool-calling loop
+    #: over a small closed tool surface; raise it if answers get sloppy.
+    anthropic_effort: str = "medium"
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     max_turns: int = 8
     show_thinking: bool = False
@@ -124,11 +132,18 @@ class Settings(BaseSettings):
         settings must never raise, or the CLI and the test suite become
         hostage to a deployment concern.
         """
-        if self.auth_mode is AuthMode.STRICT and self.jwt_secret == DEV_JWT_SECRET:
-            raise ConfigurationError(
-                "LEDGER_AUTH_MODE=strict requires a real LEDGER_JWT_SECRET; "
-                "the built-in development key is still in place."
-            )
+        if self.auth_mode is AuthMode.STRICT:
+            if self.jwt_secret == DEV_JWT_SECRET:
+                raise ConfigurationError(
+                    "LEDGER_AUTH_MODE=strict requires a real LEDGER_JWT_SECRET; "
+                    "the built-in development key is still in place."
+                )
+            if len(self.jwt_secret.encode()) < MIN_JWT_SECRET_BYTES:
+                raise ConfigurationError(
+                    f"LEDGER_JWT_SECRET must be at least {MIN_JWT_SECRET_BYTES} bytes "
+                    f"for HS256 (RFC 7518 section 3.2); got "
+                    f"{len(self.jwt_secret.encode())}."
+                )
 
     @property
     def demo_mode(self) -> bool:
