@@ -1,0 +1,206 @@
+name: Release
+
+# Images are built by CI on every push and then thrown away, which means
+# "deploy this" would otherwise mean "clone the repository and build it on the
+# target". This publishes an artefact instead.
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write      # release notes
+  packages: write      # ghcr.io
+  attestations: write  # build provenance
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # never interrupt a publish half-way
+
+jobs:
+  build:
+    name: Build and publish ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ledger-api
+            dockerfile: docker/api.Dockerfile
+          - image: ledger-web
+            dockerfile: docker/web.Dockerfile
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image }}
+            org.opencontainers.image.description=Streaming LLM chat over governed data
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          # arm64 for Apple silicon, amd64 for everything that will run it.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  smoke:
+    name: The published image actually starts
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      kafka:
+        image: apache/kafka:4.3.1
+        ports: ["9092:9092"]
+        env:
+          KAFKA_NODE_ID: "1"
+          KAFKA_PROCESS_ROLES: "broker,controller"
+          KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+          KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+          KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+          KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+          KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+          CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Sign in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Verifying after publishing would be too late, but verifying a *locally
+      # built* image would not be verifying the artefact. So: pull what was
+      # actually pushed, and boot it.
+      - name: Build the fixture dataset and catalogue
+        run: |
+          pipx install uv || pip install uv
+          uv sync --all-extras
+          uv run python -m scripts.make_fixture
+          LEDGER_DATA_DIR=tests/fixtures/data uv run ledger catalog build
+
+      - name: Boot the published image
+        run: |
+          IMAGE="${REGISTRY}/${{ github.repository_owner }}/ledger-api:sha-$(git rev-parse --short HEAD)"
+          echo "booting $IMAGE"
+          docker run -d --name ledger-smoke --network host \
+            -e LEDGER_KAFKA_BOOTSTRAP_SERVERS=localhost:9092 \
+            -e LEDGER_DATA_DIR=/app/data \
+            -e LEDGER_CATALOG_MODE=offline \
+            -v "$PWD/tests/fixtures/data:/app/data:ro" \
+            "$IMAGE"
+
+      - name: Every readiness check must report healthy
+        run: |
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:8000/api/ready > ready.json; then break; fi
+            sleep 3
+          done
+          cat ready.json
+          # `ready: true` is not enough on its own -- an endpoint with no checks
+          # in it returns exactly that. Assert there are checks, and that every
+          # one of them passed.
+          python - <<'PY'
+          import json, sys
+          r = json.load(open("ready.json"))
+          assert r["ready"] is True, r
+          assert len(r["checks"]) >= 4, f"expected real checks, got {r['checks']}"
+          failed = [c for c in r["checks"] if not c["ok"]]
+          assert not failed, failed
+          print("all checks healthy:", [c["name"] for c in r["checks"]])
+          PY
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs ledger-smoke || true
+
+      - name: Stop
+        if: always()
+        run: docker rm -f ledger-smoke || true
+
+  release:
+    name: Publish release notes
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## Images
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository_owner }}/ledger-api:${{ github.ref_name }}
+            docker pull ghcr.io/${{ github.repository_owner }}/ledger-web:${{ github.ref_name }}
+            ```
+
+            Both are multi-arch (amd64, arm64) with build provenance attested.
+
+            ## Running it
+
+            ```bash
+            curl -O https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/docker-compose.prod.yml
+            LEDGER_VERSION=${{ github.ref_name }} docker compose -f docker-compose.prod.yml up
+            ```
+
+            No API key is required. Without one the model backend resolves to a
+            scripted model and the interface says so; the tool calls, governance
+            events, and query results are all still real.

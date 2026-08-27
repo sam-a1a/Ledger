@@ -1,0 +1,96 @@
+# Pull published images rather than building from source, so a deployment is
+# pinned to an artefact rather than to a git checkout.
+#
+#   LEDGER_VERSION=v0.1.0 docker compose -f docker-compose.prod.yml up
+#
+# Set ANTHROPIC_API_KEY for real answers. Without one the model backend resolves
+# to a scripted model and the interface says so -- the tool calls, governance
+# events, and query results are all still real.
+
+name: ledger
+
+x-image-owner: &owner ${LEDGER_IMAGE_OWNER:-sam-a1a}
+
+services:
+  kafka:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,PLAINTEXT_HOST://:29092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
+    ports: ["29092:29092"]
+    volumes: ["kafka-data:/var/lib/kafka/data"]
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+
+  seed:
+    image: ghcr.io/${LEDGER_IMAGE_OWNER:-sam-a1a}/ledger-api:${LEDGER_VERSION:-latest}
+    command: ["sh", "-c", "python -m scripts.fetch_data && ledger catalog build"]
+    environment:
+      LEDGER_DATA_DIR: /app/data
+    volumes: ["ledger-data:/app/data"]
+    restart: "no"
+
+  api:
+    image: ghcr.io/${LEDGER_IMAGE_OWNER:-sam-a1a}/ledger-api:${LEDGER_VERSION:-latest}
+    depends_on:
+      kafka: { condition: service_healthy }
+      seed: { condition: service_completed_successfully }
+    environment:
+      - LEDGER_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - LEDGER_DATA_DIR=/app/data
+      - LEDGER_CATALOG_MODE=offline
+      # Pass-through: `KEY: ${VAR:-}` would set an empty string and override the
+      # application default rather than falling back to it.
+      - ANTHROPIC_API_KEY
+      - LEDGER_JWT_SECRET
+      - LEDGER_AUTH_MODE
+    volumes: ["ledger-data:/app/data:ro"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  audit-consumer:
+    image: ghcr.io/${LEDGER_IMAGE_OWNER:-sam-a1a}/ledger-api:${LEDGER_VERSION:-latest}
+    command: ["ledger-audit"]
+    depends_on:
+      kafka: { condition: service_healthy }
+      seed: { condition: service_completed_successfully }
+    environment:
+      - LEDGER_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - LEDGER_DATA_DIR=/app/data
+      - LEDGER_CATALOG_MODE=offline
+    # Writable, unlike the API's mount: this is the process that materialises
+    # the log, and it is its own failure domain by design.
+    volumes: ["ledger-data:/app/data"]
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/${LEDGER_IMAGE_OWNER:-sam-a1a}/ledger-web:${LEDGER_VERSION:-latest}
+    depends_on:
+      api: { condition: service_healthy }
+    ports: ["8080:80"]
+    restart: unless-stopped
+
+volumes:
+  kafka-data:
+  ledger-data:
