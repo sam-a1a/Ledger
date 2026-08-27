@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ledger import __version__
-from ledger.api.routes import health
+from ledger.api.routes import auth, chat, health
 from ledger.api.state import AppState
 from ledger.catalog import store as catalog_store
 from ledger.config import Settings, get_settings
@@ -92,6 +92,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(health.router, prefix="/api")
+    app.include_router(auth.router, prefix="/api/auth")
+    app.include_router(chat.router, prefix="/api")
     return app
 
 
