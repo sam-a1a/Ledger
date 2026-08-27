@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "ledger": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "ledger-mcp"],
+      "env": {
+        "LEDGER_MCP_ROLE": "viewer",
+        "LEDGER_KAFKA_BOOTSTRAP_SERVERS": "localhost:29092",
+        "LEDGER_CATALOG_MODE": "offline"
+      }
+    }
+  }
+}

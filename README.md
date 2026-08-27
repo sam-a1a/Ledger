@@ -163,6 +163,21 @@ results are all still real — only the model is faked. Setting a key switches t
 
 ### MCP
 
+**Claude Code** needs no setup: a project-scoped `.mcp.json` is committed, so
+opening the repository offers the server and `claude mcp list` shows it. Approve
+it once and the eight tools are available in the session.
+
+```bash
+docker compose up -d kafka   # the server audits every call, so it needs a broker
+claude mcp list              # ledger: uv run --directory . ledger-mcp
+```
+
+It connects as `viewer`. To explore the restricted columns too, change
+`LEDGER_MCP_ROLE` to `analyst` in `.mcp.json` — which is itself a demonstration
+of the RBAC boundary, since the tool results visibly change.
+
+**Claude Desktop** takes the same server through its own config file:
+
 ```json
 {"mcpServers": {"ledger": {
   "command": "uv",
