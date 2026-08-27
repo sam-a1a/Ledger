@@ -9,7 +9,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ledger.errors import ConfigurationError
@@ -56,8 +56,18 @@ class CatalogMode(StrEnum):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="LEDGER_",
-        env_file=".env",
+        env_file=(".env", ".env.local"),
+        env_file_encoding="utf-8",
         extra="ignore",
+        # Fields with an explicit alias are otherwise settable only by that
+        # alias, which makes `Settings(catalog_mode=...)` in a test read as
+        # working while doing nothing.
+        populate_by_name=True,
+        # `model_backend` collides with pydantic's protected `model_` namespace,
+        # and the collision is silent: the keyword is accepted and discarded.
+        # The field name is the right one for what it holds, so clear the
+        # namespace rather than rename it to something vaguer.
+        protected_namespaces=(),
     )
 
     # --- data -------------------------------------------------------------
@@ -82,6 +92,34 @@ class Settings(BaseSettings):
     #: over a small closed tool surface; raise it if answers get sloppy.
     anthropic_effort: str = "medium"
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+
+    @field_validator("anthropic_api_key", "mcp_tenant", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """Treat an empty value as absent rather than as an override.
+
+        `.env` files and container environments both express "not configured"
+        as an empty string, and taking that literally is how an empty value
+        silently replaces a working default.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("jwt_secret", mode="before")
+    @classmethod
+    def _blank_secret_falls_back(cls, value: object) -> object:
+        """A blank signing key means "not configured", not "sign with nothing".
+
+        Taking it literally is exactly how every login came to fail with
+        "HMAC key must not be empty" while the container reported itself
+        healthy. Falling back keeps the type honest; `AuthMode.STRICT` still
+        refuses to start on the development key.
+        """
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return DEV_JWT_SECRET
+        return value
+
     max_turns: int = 8
     #: Milliseconds between token chunks from the scripted model. Zero in tests,
     #: where speed matters; a small value for the demo and for the one E2E spec
@@ -110,7 +148,11 @@ class Settings(BaseSettings):
     mcp_tenant: str | None = None
 
     # --- kafka ------------------------------------------------------------
-    kafka_bootstrap_servers: str = "localhost:9092"
+    #: The host-facing listener, because that is what a developer running the
+    #: API outside Docker reaches. Compose overrides this with `kafka:9092`
+    #: for in-network services. Defaulting to the in-network address is the
+    #: single most common way this is misconfigured.
+    kafka_bootstrap_servers: str = "localhost:29092"
     kafka_topic_tool_calls: str = "ledger.tool-calls"
     kafka_topic_access_denied: str = "ledger.access-denied"
     kafka_client_id: str = "ledger-api"

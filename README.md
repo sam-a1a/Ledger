@@ -128,12 +128,33 @@ prompt tells the model to compare rates rather than totals.
 ## Running it
 
 ```bash
+cp .env.example .env  # every value is already the default; edit what you need
 make install          # uv sync
 make fetch            # ~180 MB of parquet into data/raw
 docker compose up -d kafka
+uv run ledger doctor  # checks every dependency and says what to fix
 make serve            # API on :8077
 cd web && npm install && npm run dev
 ```
+
+`ledger doctor` is the fast way to find out why something will not start:
+
+```
+  [ok  ] dataset    3 file(s), 181 MB in ./data/raw
+  [ok  ] catalogue  31 columns, 10,721,140 rows (seed=31)
+  [warn] model      scripted -- answers are canned, everything under them is real
+                      -> set ANTHROPIC_API_KEY to use a real model
+  [FAIL] audit log  no broker at localhost:29092
+                      -> docker compose up -d kafka
+```
+
+### Getting an API key
+
+Ledger runs without one. If you want real answers, create a key at
+[platform.claude.com](https://platform.claude.com/) under **Settings → API keys**
+and put it in `.env` as `ANTHROPIC_API_KEY`. New accounts get a small one-time
+credit, which goes a long way here — a question costs a fraction of a cent,
+because the model reads a column catalogue rather than any data.
 
 Without `ANTHROPIC_API_KEY` the model backend resolves to a scripted one and the
 UI shows a demo-mode banner. The tool calls, governance events, and query
