@@ -21,6 +21,8 @@ from ledger.catalog.scope import scope_catalog
 from ledger.config import Settings
 from ledger.engine.duck import Engine
 from ledger.security.principal import Principal, Role
+from ledger.tools.context import ToolContext
+from tests.doubles import RecordingPublisher
 
 FIXTURE_DATA = Path(__file__).parent / "fixtures" / "data"
 
@@ -85,3 +87,43 @@ def analyst_scope(catalog: Catalog, analyst: Principal) -> ScopedCatalog:
 @pytest.fixture
 def viewer_scope(catalog: Catalog, viewer: Principal) -> ScopedCatalog:
     return scope_catalog(catalog, viewer)
+
+
+@pytest.fixture
+def analyst_ctx(
+    analyst: Principal,
+    analyst_scope: ScopedCatalog,
+    cursor: duckdb.DuckDBPyConnection,
+    settings: Settings,
+) -> ToolContext:
+    return ToolContext(
+        principal=analyst,
+        scope=analyst_scope,
+        cursor=cursor,
+        publisher=RecordingPublisher(),
+        settings=settings,
+        conversation_id="conv-test",
+    )
+
+
+@pytest.fixture
+def viewer_ctx(
+    viewer: Principal,
+    viewer_scope: ScopedCatalog,
+    cursor: duckdb.DuckDBPyConnection,
+    settings: Settings,
+) -> ToolContext:
+    return ToolContext(
+        principal=viewer,
+        scope=viewer_scope,
+        cursor=cursor,
+        publisher=RecordingPublisher(),
+        settings=settings,
+        conversation_id="conv-test",
+    )
+
+
+def published(ctx: ToolContext) -> RecordingPublisher:
+    """Narrow the publisher back to the double, for assertions."""
+    assert isinstance(ctx.publisher, RecordingPublisher)
+    return ctx.publisher

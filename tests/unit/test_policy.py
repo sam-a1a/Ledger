@@ -6,6 +6,8 @@ from ledger.security.policy import (
     COLUMN_SENSITIVITY,
     ROLE_GRANTS,
     Sensitivity,
+    hidden_from,
+    internal_columns,
     restricted_columns,
     sensitivity_of,
     visible_to,
@@ -42,6 +44,24 @@ def test_no_role_is_granted_internal() -> None:
         assert Sensitivity.INTERNAL not in grants, role
 
 
-def test_restricted_columns_covers_every_non_public_entry() -> None:
-    expected = {n for n, s in COLUMN_SENSITIVITY.items() if s is not Sensitivity.PUBLIC}
-    assert restricted_columns() == expected
+def test_the_two_hidden_sets_are_distinct_and_together_cover_non_public() -> None:
+    """`restricted` is analyst-only; `internal` is nobody-at-all.
+
+    They must not be conflated: the SQL compiler legitimately names the internal
+    tenant key when it injects the row-level predicate, so a leakage assertion
+    written against the union would fail on correct behaviour.
+    """
+    assert restricted_columns().isdisjoint(internal_columns())
+    non_public = {n for n, s in COLUMN_SENSITIVITY.items() if s is not Sensitivity.PUBLIC}
+    assert restricted_columns() | internal_columns() == non_public
+
+
+def test_hidden_from_viewer_includes_both_kinds() -> None:
+    hidden = hidden_from("viewer")
+    assert "tip_amount" in hidden  # analyst-only
+    assert "tenant_id" in hidden  # internal
+    assert "fare_amount" not in hidden
+
+
+def test_hidden_from_analyst_is_internal_only() -> None:
+    assert hidden_from("analyst") == internal_columns()
