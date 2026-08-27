@@ -55,8 +55,14 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
+            # Both forms, deliberately. `{{version}}` strips the leading `v`, so
+            # the git tag v0.1.0 publishes only `0.1.0` -- and everyone copies
+            # the tag they can see on the releases page. A deploy command that
+            # works only if you know to delete one character is a trap.
             type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern=v{{major}}.{{minor}}
             type=ref,event=branch
             type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
