@@ -13,11 +13,20 @@ import { defineConfig, devices } from "@playwright/test";
  * buffers server-sent events -- a stream that works with curl hangs in the
  * browser. Production serves both from one origin behind nginx.
  *
- * The API runs on 8077 rather than 8000. Port 8000 is the single most contested
- * default on a developer machine, and a collision here does not fail cleanly --
- * Playwright either reuses somebody else's server or dies on bind.
  */
 const KAFKA = process.env.LEDGER_KAFKA_BOOTSTRAP ?? "localhost:29092";
+
+/**
+ * A port of the suite's own, distinct from both the dev server (8077) and
+ * anything Compose publishes.
+ *
+ * `reuseExistingServer` will happily attach to whatever answers on a matching
+ * port, including a *different* server. The suite silently ran against the
+ * Compose stack once -- which has no scripted token delay, so the test that
+ * proves the answer renders incrementally failed for a reason that had nothing
+ * to do with the code. Reuse is therefore off, and the port is unshared.
+ */
+const API_PORT = 8079;
 const REPO = new URL("..", import.meta.url).pathname;
 
 export default defineConfig({
@@ -43,10 +52,10 @@ export default defineConfig({
 
   webServer: [
     {
-      command: "uv run uvicorn ledger.api.app:app --host 127.0.0.1 --port 8077",
+      command: `uv run uvicorn ledger.api.app:app --host 127.0.0.1 --port ${API_PORT}`,
       cwd: REPO,
-      url: "http://127.0.0.1:8077/api/ready",
-      reuseExistingServer: !process.env.CI,
+      url: `http://127.0.0.1:${API_PORT}/api/ready`,
+      reuseExistingServer: false,
       timeout: 90_000,
       stdout: "pipe",
       stderr: "pipe",
@@ -64,9 +73,9 @@ export default defineConfig({
       // VITE_API_BASE is baked in at build time, so the build has to happen
       // here rather than relying on a previously built dist.
       command: "npm run build && npm run preview",
-      env: { VITE_API_BASE: "http://127.0.0.1:8077" },
+      reuseExistingServer: false,
+      env: { VITE_API_BASE: `http://127.0.0.1:${API_PORT}` },
       url: "http://127.0.0.1:4173",
-      reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },
   ],
