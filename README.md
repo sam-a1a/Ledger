@@ -1,6 +1,6 @@
 # Ledger
 
-[![CI](https://github.com/BassamGhazaleh/ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/BassamGhazaleh/ledger/actions/workflows/ci.yml)
+[![CI](https://github.com/sam-a1a/Ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/sam-a1a/Ledger/actions/workflows/ci.yml)
 
 Streaming LLM chat over a governed dataset. You ask a question in English; the
 model answers it — but it never sees a row. It composes calls against typed
@@ -262,3 +262,9 @@ notebooks/     the dataset exploration that produced bootstrap.sql
 ```
 
 MIT.
+
+---
+
+Trip data is published by the [NYC Taxi & Limousine Commission](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)
+and is used here under their terms. It is not redistributed by this repository —
+`make fetch` downloads it directly from the TLC's CDN.
