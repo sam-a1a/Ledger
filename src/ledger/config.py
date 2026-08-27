@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     # --- catalogue --------------------------------------------------------
     catalog_mode: CatalogMode = CatalogMode.AUTO
     profile_months: int = 3
+    #: Overrides for the committed description files. Tests point these at
+    #: temporary copies; nothing else should need them.
+    seed_descriptions_path: Path | None = None
+    generated_descriptions_path: Path | None = None
 
     # --- model ------------------------------------------------------------
     model_backend: ModelBackend = Field(default=ModelBackend.AUTO, alias="LEDGER_MODEL")

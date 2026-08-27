@@ -82,6 +82,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     info = sub.add_parser("info", help="Show resolved configuration")
     info.set_defaults(func=_cmd_info)
+
+    from ledger.catalog.cli import register as register_catalog
+
+    register_catalog(sub)
     return parser
 
 

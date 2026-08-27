@@ -1,0 +1,895 @@
+{
+  "version": "5b048a2c3053",
+  "dataset_fingerprint": "5b048a2c3053621cffae23e752c22fcb93bff1fb9b8a1365f9ba8846f7dd9d27",
+  "built_at": "2026-08-27T14:43:06.085885Z",
+  "stats": {
+    "row_count": 45000,
+    "profiled_rows": 45000,
+    "source_files": [
+      "yellow_tripdata_2024-12.parquet",
+      "yellow_tripdata_2025-01.parquet",
+      "yellow_tripdata_2025-02.parquet"
+    ],
+    "stats_scope": "global"
+  },
+  "columns": {
+    "vendor_id": {
+      "name": "vendor_id",
+      "physical_name": "vendor_id",
+      "duckdb_type": "INTEGER",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 2,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        2,
+        1
+      ],
+      "description": {
+        "text": "Code for the technology provider that supplied the trip record.",
+        "source": "seed",
+        "unit": null,
+        "caveat": "A vendor identifier, not a taxi or driver identifier.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "vendor_label": {
+      "name": "vendor_label",
+      "physical_name": "vendor_label",
+      "duckdb_type": "VARCHAR",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 2,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        "Curb/VeriFone",
+        "Creative Mobile"
+      ],
+      "description": {
+        "text": "Human-readable name of the technology provider that supplied the record.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "tenant_id": {
+      "name": "tenant_id",
+      "physical_name": "tenant_id",
+      "duckdb_type": "INTEGER",
+      "semantic_type": "categorical",
+      "sensitivity": "internal",
+      "null_fraction": 0.0,
+      "approx_distinct": 2,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        1,
+        2
+      ],
+      "description": {
+        "text": "Internal partition key applied by the query compiler; never exposed to any caller.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "pickup_at": {
+      "name": "pickup_at",
+      "physical_name": "pickup_at",
+      "duckdb_type": "TIMESTAMP",
+      "semantic_type": "temporal",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 46236,
+      "min_value": "2024-12-01T00:00:59",
+      "max_value": "2025-02-28T23:59:12",
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [],
+      "description": {
+        "text": "Timestamp when the taximeter was engaged, in local New York time.",
+        "source": "seed",
+        "unit": null,
+        "caveat": "Naive local time; no timezone offset is recorded in the source.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "dropoff_at": {
+      "name": "dropoff_at",
+      "physical_name": "dropoff_at",
+      "duckdb_type": "TIMESTAMP",
+      "semantic_type": "temporal",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 50627,
+      "min_value": "2024-12-01T00:10:35",
+      "max_value": "2025-03-01T00:06:21",
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [],
+      "description": {
+        "text": "Timestamp when the taximeter was disengaged, in local New York time.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "pickup_date": {
+      "name": "pickup_date",
+      "physical_name": "pickup_date",
+      "duckdb_type": "DATE",
+      "semantic_type": "temporal",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 85,
+      "min_value": "2024-12-01",
+      "max_value": "2025-02-28",
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        "2025-02-12",
+        "2025-02-04",
+        "2025-02-23",
+        "2025-02-15",
+        "2025-02-01",
+        "2025-02-18",
+        "2025-02-10",
+        "2025-02-16",
+        "2025-02-22",
+        "2025-02-03"
+      ],
+      "description": {
+        "text": "Calendar date of pickup, derived from pickup_at for convenient grouping.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "pickup_hour": {
+      "name": "pickup_hour",
+      "physical_name": "pickup_hour",
+      "duckdb_type": "INTEGER",
+      "semantic_type": "numeric",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 24,
+      "min_value": 0,
+      "max_value": 23,
+      "p01": 0.0,
+      "p50": 11.0,
+      "p99": 23.0,
+      "sample_values": [
+        8,
+        3,
+        5,
+        22,
+        6,
+        10,
+        18,
+        20,
+        9,
+        13
+      ],
+      "description": {
+        "text": "Hour of day of pickup, 0 to 23, derived from pickup_at.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "trip_duration_min": {
+      "name": "trip_duration_min",
+      "physical_name": "trip_duration_min",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 2735,
+      "min_value": 1.0,
+      "max_value": 102.03333333333333,
+      "p01": 2.4998333333333336,
+      "p50": 10.1,
+      "p99": 40.833500000000036,
+      "sample_values": [],
+      "description": {
+        "text": "Elapsed minutes between the meter being engaged and disengaged.",
+        "source": "seed",
+        "unit": "minutes",
+        "caveat": "Computed from the two timestamps; a handful of records are negative or implausibly long.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "passenger_count": {
+      "name": "passenger_count",
+      "physical_name": "passenger_count",
+      "duckdb_type": "INTEGER",
+      "semantic_type": "numeric",
+      "sensitivity": "public",
+      "null_fraction": 0.019844444444444446,
+      "approx_distinct": 6,
+      "min_value": 1,
+      "max_value": 6,
+      "p01": 1.0,
+      "p50": 1.0,
+      "p99": 6.0,
+      "sample_values": [
+        1,
+        2,
+        3,
+        5,
+        4,
+        6
+      ],
+      "description": {
+        "text": "Number of passengers, entered manually by the driver.",
+        "source": "seed",
+        "unit": null,
+        "caveat": "Driver-entered and frequently missing, so counts are unreliable for demand analysis.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "trip_distance": {
+      "name": "trip_distance",
+      "physical_name": "trip_distance",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 1812,
+      "min_value": 0.11,
+      "max_value": 210.4,
+      "p01": 0.39,
+      "p50": 2.46,
+      "p99": 16.38020000000004,
+      "sample_values": [],
+      "description": {
+        "text": "Distance travelled, as reported by the taximeter.",
+        "source": "seed",
+        "unit": "miles",
+        "caveat": "Has a long tail; a small number of records report hundreds of miles.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "ratecode_id": {
+      "name": "ratecode_id",
+      "physical_name": "ratecode_id",
+      "duckdb_type": "INTEGER",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 3,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        1,
+        2,
+        5
+      ],
+      "description": {
+        "text": "Code for the rate in effect at the end of the trip.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "ratecode_label": {
+      "name": "ratecode_label",
+      "physical_name": "ratecode_label",
+      "duckdb_type": "VARCHAR",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 3,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        "Standard rate",
+        "JFK",
+        "Negotiated fare"
+      ],
+      "description": {
+        "text": "Rate in effect at the end of the trip, such as Standard rate, JFK, or Negotiated fare.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "store_and_fwd_flag": {
+      "name": "store_and_fwd_flag",
+      "physical_name": "store_and_fwd_flag",
+      "duckdb_type": "VARCHAR",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 2,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        "N",
+        "Y"
+      ],
+      "description": {
+        "text": "Y when the record was held in vehicle memory before sending, because the vehicle had no server connection.",
+        "source": "seed",
+        "unit": null,
+        "caveat": "An operational transmission flag, unrelated to the trip itself.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "pickup_location_id": {
+      "name": "pickup_location_id",
+      "physical_name": "pickup_location_id",
+      "duckdb_type": "INTEGER",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 27,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        4,
+        50,
+        41,
+        138,
+        7,
+        100,
+        162,
+        13,
+        1,
+        170
+      ],
+      "description": {
+        "text": "TLC taxi zone identifier where the meter was engaged.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "pickup_borough": {
+      "name": "pickup_borough",
+      "physical_name": "pickup_borough",
+      "duckdb_type": "VARCHAR",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 3,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        "Manhattan",
+        "Queens",
+        "Brooklyn",
+        "EWR"
+      ],
+      "description": {
+        "text": "New York borough containing the pickup zone.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "pickup_zone": {
+      "name": "pickup_zone",
+      "physical_name": "pickup_zone",
+      "duckdb_type": "VARCHAR",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 32,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        "Alphabet City",
+        "Clinton West",
+        "Central Harlem",
+        "LaGuardia Airport",
+        "Astoria",
+        "Garment District",
+        "Midtown East",
+        "Battery Park City",
+        "Newark Airport",
+        "Murray Hill"
+      ],
+      "description": {
+        "text": "Named TLC taxi zone where the trip began, such as JFK Airport or Midtown Center.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "dropoff_location_id": {
+      "name": "dropoff_location_id",
+      "physical_name": "dropoff_location_id",
+      "duckdb_type": "INTEGER",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 27,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        4,
+        186,
+        255,
+        161,
+        107,
+        13,
+        237,
+        140,
+        132,
+        87
+      ],
+      "description": {
+        "text": "TLC taxi zone identifier where the meter was disengaged.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "dropoff_borough": {
+      "name": "dropoff_borough",
+      "physical_name": "dropoff_borough",
+      "duckdb_type": "VARCHAR",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 3,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        "Manhattan",
+        "Queens",
+        "Brooklyn",
+        "EWR"
+      ],
+      "description": {
+        "text": "New York borough containing the dropoff zone.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "dropoff_zone": {
+      "name": "dropoff_zone",
+      "physical_name": "dropoff_zone",
+      "duckdb_type": "VARCHAR",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 32,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        "Alphabet City",
+        "Penn Station/Madison Sq West",
+        "Williamsburg (North Side)",
+        "Midtown Center",
+        "Gramercy",
+        "Battery Park City",
+        "Upper East Side South",
+        "Lenox Hill East",
+        "JFK Airport",
+        "Financial District North"
+      ],
+      "description": {
+        "text": "Named TLC taxi zone where the trip ended.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "payment_type": {
+      "name": "payment_type",
+      "physical_name": "payment_type",
+      "duckdb_type": "INTEGER",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 4,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "description": {
+        "text": "Numeric code for how the passenger paid.",
+        "source": "seed",
+        "unit": null,
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "payment_type_label": {
+      "name": "payment_type_label",
+      "physical_name": "payment_type_label",
+      "duckdb_type": "VARCHAR",
+      "semantic_type": "categorical",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 4,
+      "min_value": null,
+      "max_value": null,
+      "p01": null,
+      "p50": null,
+      "p99": null,
+      "sample_values": [
+        "Credit card",
+        "Cash",
+        "No charge",
+        "Dispute"
+      ],
+      "description": {
+        "text": "How the passenger paid, such as Credit card, Cash, or Dispute.",
+        "source": "seed",
+        "unit": null,
+        "caveat": "Tips are only recorded for card payments, so cash tips appear as zero.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "fare_amount": {
+      "name": "fare_amount",
+      "physical_name": "fare_amount",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 4026,
+      "min_value": -12.5,
+      "max_value": 998.25,
+      "p01": 8.189899999999998,
+      "p50": 19.78,
+      "p99": 66.99,
+      "sample_values": [],
+      "description": {
+        "text": "Time-and-distance fare calculated by the meter, before any surcharges or tips.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": "Can be negative on refunded or voided trips.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "extra": {
+      "name": "extra",
+      "physical_name": "extra",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "restricted",
+      "null_fraction": 0.0,
+      "approx_distinct": 4,
+      "min_value": 0.0,
+      "max_value": 2.5,
+      "p01": 0.0,
+      "p50": 0.5,
+      "p99": 2.5,
+      "sample_values": [
+        2.5,
+        0.0,
+        0.5,
+        1.0
+      ],
+      "description": {
+        "text": "Miscellaneous extras and surcharges, chiefly the rush hour and overnight charges.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "mta_tax": {
+      "name": "mta_tax",
+      "physical_name": "mta_tax",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "restricted",
+      "null_fraction": 0.0,
+      "approx_distinct": 1,
+      "min_value": 0.5,
+      "max_value": 0.5,
+      "p01": 0.5,
+      "p50": 0.5,
+      "p99": 0.5,
+      "sample_values": [
+        0.5
+      ],
+      "description": {
+        "text": "MTA tax triggered automatically by the metered rate in use.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "tip_amount": {
+      "name": "tip_amount",
+      "physical_name": "tip_amount",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "restricted",
+      "null_fraction": 0.0,
+      "approx_distinct": 1455,
+      "min_value": 0.0,
+      "max_value": 260.77,
+      "p01": 0.0,
+      "p50": 3.53,
+      "p99": 14.57,
+      "sample_values": [],
+      "description": {
+        "text": "Tip recorded for the trip.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": "Automatically populated for card payments only; cash tips are not recorded and read as zero.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "tolls_amount": {
+      "name": "tolls_amount",
+      "physical_name": "tolls_amount",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "restricted",
+      "null_fraction": 0.0,
+      "approx_distinct": 2,
+      "min_value": 0.0,
+      "max_value": 6.94,
+      "p01": 0.0,
+      "p50": 0.0,
+      "p99": 6.94,
+      "sample_values": [
+        0.0,
+        6.94
+      ],
+      "description": {
+        "text": "Total of all tolls paid during the trip.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "improvement_surcharge": {
+      "name": "improvement_surcharge",
+      "physical_name": "improvement_surcharge",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "restricted",
+      "null_fraction": 0.0,
+      "approx_distinct": 1,
+      "min_value": 1.0,
+      "max_value": 1.0,
+      "p01": 1.0,
+      "p50": 1.0,
+      "p99": 1.0,
+      "sample_values": [
+        1.0
+      ],
+      "description": {
+        "text": "Improvement surcharge assessed on trips at the flag drop.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "total_amount": {
+      "name": "total_amount",
+      "physical_name": "total_amount",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "public",
+      "null_fraction": 0.0,
+      "approx_distinct": 5110,
+      "min_value": -9.25,
+      "max_value": 1263.77,
+      "p01": 14.05,
+      "p50": 30.12,
+      "p99": 86.31040000000009,
+      "sample_values": [],
+      "description": {
+        "text": "Total amount charged to the passenger, including all surcharges.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": "Excludes cash tips, which are never recorded.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "congestion_surcharge": {
+      "name": "congestion_surcharge",
+      "physical_name": "congestion_surcharge",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "restricted",
+      "null_fraction": 0.0,
+      "approx_distinct": 2,
+      "min_value": 0.0,
+      "max_value": 2.5,
+      "p01": 0.0,
+      "p50": 2.5,
+      "p99": 2.5,
+      "sample_values": [
+        2.5,
+        0.0
+      ],
+      "description": {
+        "text": "New York State congestion surcharge applied to the trip.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "airport_fee": {
+      "name": "airport_fee",
+      "physical_name": "airport_fee",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "restricted",
+      "null_fraction": 0.0,
+      "approx_distinct": 2,
+      "min_value": 0.0,
+      "max_value": 1.75,
+      "p01": 0.0,
+      "p50": 0.0,
+      "p99": 1.75,
+      "sample_values": [
+        0.0,
+        1.75
+      ],
+      "description": {
+        "text": "Flat fee applied to pickups at LaGuardia and JFK airports.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": null,
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    },
+    "cbd_congestion_fee": {
+      "name": "cbd_congestion_fee",
+      "physical_name": "cbd_congestion_fee",
+      "duckdb_type": "DOUBLE",
+      "semantic_type": "numeric",
+      "sensitivity": "restricted",
+      "null_fraction": 0.3333333333333333,
+      "approx_distinct": 2,
+      "min_value": 0.0,
+      "max_value": 0.75,
+      "p01": 0.0,
+      "p50": 0.75,
+      "p99": 0.75,
+      "sample_values": [
+        0.75,
+        0.0
+      ],
+      "description": {
+        "text": "Manhattan Central Business District congestion charge, in effect since 5 January 2025.",
+        "source": "seed",
+        "unit": "USD",
+        "caveat": "Null for every trip before January 2025, because the column did not exist in those files.",
+        "model": null,
+        "generated_at": null,
+        "profile_fingerprint": null
+      }
+    }
+  }
+}

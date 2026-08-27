@@ -14,8 +14,13 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from ledger.catalog import describe, store
+from ledger.catalog.models import Catalog, ScopedCatalog
+from ledger.catalog.profile import profile_dataset
+from ledger.catalog.scope import scope_catalog
 from ledger.config import Settings
 from ledger.engine.duck import Engine
+from ledger.security.principal import Principal, Role
 
 FIXTURE_DATA = Path(__file__).parent / "fixtures" / "data"
 
@@ -47,3 +52,36 @@ def engine(settings: Settings) -> Iterator[Engine]:
 def cursor(engine: Engine) -> Iterator[duckdb.DuckDBPyConnection]:
     with engine.cursor() as cur:
         yield cur
+
+
+@pytest.fixture(scope="session")
+def catalog(engine: Engine, settings: Settings) -> Catalog:
+    """A fully profiled catalogue over the fixture, descriptions resolved."""
+    with engine.cursor() as cur:
+        built = profile_dataset(cur, raw_dir=settings.raw_dir)
+    descriptions = describe.resolve(
+        built,
+        seed_path=store.seed_path(settings),
+        generated_path=store.generated_path(settings),
+    )
+    return describe.apply(built, descriptions)
+
+
+@pytest.fixture
+def analyst() -> Principal:
+    return Principal(subject="test-analyst", role=Role.ANALYST, tenant_id=None)
+
+
+@pytest.fixture
+def viewer() -> Principal:
+    return Principal(subject="test-viewer", role=Role.VIEWER, tenant_id=1)
+
+
+@pytest.fixture
+def analyst_scope(catalog: Catalog, analyst: Principal) -> ScopedCatalog:
+    return scope_catalog(catalog, analyst)
+
+
+@pytest.fixture
+def viewer_scope(catalog: Catalog, viewer: Principal) -> ScopedCatalog:
+    return scope_catalog(catalog, viewer)
