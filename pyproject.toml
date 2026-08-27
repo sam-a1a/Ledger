@@ -82,7 +82,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]        # assert is the point
+# S101: assert is the point. S105/S106: test tokens and signing keys are
+# fixtures, and flagging them trains people to ignore the rule.
+"tests/**" = ["S101", "S105", "S106"]
 "scripts/**" = ["S101"]
 # Exploration code interpolates local Paths into SQL to inspect files one at a
 # time. Not a query surface, and nothing model-controlled reaches it.
