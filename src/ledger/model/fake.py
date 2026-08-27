@@ -49,8 +49,15 @@ Responder = Callable[[list[dict[str, Any]]], ScriptedTurn]
 
 
 def last_tool_result(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """The most recent tool result, parsed, so a responder can react to it."""
+    """The most recent tool result *of the current turn*, parsed.
+
+    Stops at the latest user message with plain text content, which marks where
+    this turn began. Without that boundary a follow-up question would see the
+    previous turn's results and conclude its work was already done.
+    """
     for message in reversed(messages):
+        if message.get("role") == "user" and isinstance(message.get("content"), str):
+            return None
         content = message.get("content")
         if message.get("role") != "user" or not isinstance(content, list):
             continue

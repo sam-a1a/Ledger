@@ -147,6 +147,15 @@ class Settings(BaseSettings):
     mcp_role: str = "viewer"
     mcp_tenant: str | None = None
 
+    # --- database ---------------------------------------------------------
+    #: Accounts and conversations. Separate from the analytical store by
+    #: design: that one is read-only, in-memory, and shared between processes.
+    database_url: str = "postgresql+asyncpg://ledger:ledger@localhost:5455/ledger"
+    database_echo: bool = False
+    #: Applied at startup in development so a clean clone works; production
+    #: runs `alembic upgrade head` as a deliberate step.
+    database_auto_migrate: bool = True
+
     # --- kafka ------------------------------------------------------------
     #: The host-facing listener, because that is what a developer running the
     #: API outside Docker reaches. Compose overrides this with `kafka:9092`

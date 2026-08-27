@@ -30,7 +30,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from ledger.agent import events as ev
 from ledger.agent.loop import run_turn
 from ledger.api import sse
-from ledger.api.deps import StateDep, ToolContextDep
+from ledger.api.deps import SessionDep, StateDep, ToolContextDep, UserDep
+from ledger.conversations import service as conversations
 from ledger.logging import get_logger
 from ledger.model.factory import make_model_client
 from ledger.tools.context import ToolContext
@@ -48,6 +49,15 @@ SHUTDOWN_GRACE_S = 5.0
 
 
 class ChatRequest(BaseModel):
+    """What the client may send.
+
+    Deliberately *not* a message history. History is reconstructed server-side
+    from the conversation id: a client that could replay arbitrary assistant
+    turns could fabricate tool results the model then treats as its own
+    findings, which would defeat the premise that the model only ever sees what
+    the tool layer returned.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(min_length=1, max_length=2000)
@@ -64,17 +74,20 @@ async def _pump(
     conversation_id: str,
     message_id: str,
     queue: asyncio.Queue[Any],
+    history: list[dict[str, Any]],
+    recorder: _Recorder,
 ) -> None:
     """Run the loop, putting every event on the queue. Always closes the queue."""
     try:
         async for event in run_turn(
             ctx,
             model,
-            history=[],
+            history=history,
             user_message=body.message,
             conversation_id=conversation_id,
             message_id=message_id,
         ):
+            recorder.observe(event)
             await queue.put(event)
     except asyncio.CancelledError:
         raise
@@ -85,23 +98,78 @@ async def _pump(
         await queue.put(_SENTINEL)
 
 
+class _Recorder:
+    """Collects what needs persisting as the turn streams.
+
+    The answer text and the trace are assembled here rather than re-derived
+    afterwards, so a transcript reads back exactly as it was seen.
+    """
+
+    def __init__(self) -> None:
+        self.text: list[str] = []
+        self.trace: list[dict[str, Any]] = []
+        self._calls: dict[str, dict[str, Any]] = {}
+
+    def observe(self, event: Any) -> None:
+        if isinstance(event, ev.Token):
+            self.text.append(event.text)
+        elif isinstance(event, ev.ToolCallStart):
+            entry: dict[str, Any] = {
+                "tool": event.tool,
+                "args": event.args,
+                "call_id": event.call_id,
+            }
+            self._calls[event.call_id] = entry
+            self.trace.append(entry)
+        elif isinstance(event, ev.ToolCallEnd):
+            existing = self._calls.get(event.call_id)
+            if existing is not None:
+                existing["ok"] = event.ok
+                existing["row_count"] = event.row_count
+                existing["duration_ms"] = event.duration_ms
+                existing["error_code"] = event.error_code
+
+    @property
+    def answer(self) -> str:
+        return "".join(self.text)
+
+
 @router.post("/chat")
 async def chat(
     body: ChatRequest,
     request: Request,
     ctx: ToolContextDep,
     state: StateDep,
+    user: UserDep,
+    session: SessionDep,
 ) -> StreamingResponse:
-    conversation_id = body.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
+    conversation = await conversations.ensure(
+        session,
+        conversation_id=body.conversation_id,
+        user_id=user.id,
+        role=user.role,
+        tenant_id=user.tenant_id,
+        first_question=body.message,
+    )
+    # Reconstructed here, never accepted from the client.
+    history = await conversations.history(session, conversation.id, user.id)
+
+    conversation_id = conversation.id
     message_id = f"msg_{uuid.uuid4().hex[:12]}"
     ctx.conversation_id = conversation_id
     ctx.message_id = message_id
 
+    await conversations.append(session, conversation, role="user", content=body.message)
+    await session.commit()
+
+    recorder = _Recorder()
     model = make_model_client(state.settings)
     queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=QUEUE_SIZE)
 
     async def stream() -> AsyncIterator[str]:
-        task = asyncio.create_task(_pump(ctx, model, body, conversation_id, message_id, queue))
+        task = asyncio.create_task(
+            _pump(ctx, model, body, conversation_id, message_id, queue, history, recorder)
+        )
         seq = 0
         try:
             while True:
@@ -130,6 +198,21 @@ async def chat(
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, TimeoutError):
                 await asyncio.wait_for(task, timeout=SHUTDOWN_GRACE_S)
+
+            # Persist whatever was produced, including a partial answer after a
+            # disconnect: a cancelled turn that vanishes from the transcript is
+            # more confusing than one that stops mid-sentence.
+            if recorder.answer or recorder.trace:
+                with contextlib.suppress(Exception):
+                    await conversations.append(
+                        session,
+                        conversation,
+                        role="assistant",
+                        content=recorder.answer,
+                        rendered=recorder.answer,
+                        trace=recorder.trace,
+                    )
+                    await session.commit()
 
     return StreamingResponse(
         stream(),

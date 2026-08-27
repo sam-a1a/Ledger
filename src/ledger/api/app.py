@@ -9,10 +9,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ledger import __version__
-from ledger.api.routes import audit, auth, chat, health
+from ledger.api.routes import accounts, audit, auth, chat, conversations, health
 from ledger.api.state import AppState
 from ledger.catalog import store as catalog_store
-from ledger.config import Settings, get_settings
+from ledger.config import REPO_ROOT, Settings, get_settings
+from ledger.db.session import create_engine, create_sessionmaker
 from ledger.engine.duck import Engine
 from ledger.governance.journal import EventJournal
 from ledger.governance.publisher import KafkaAuditPublisher
@@ -50,6 +51,10 @@ async def build_state(settings: Settings) -> AppState:
     if replayed:
         log.info("replayed %d event(s) journalled during an earlier outage", replayed)
 
+    db_engine = create_engine(settings)
+    if settings.database_auto_migrate:
+        await _migrate(settings)
+
     engine = Engine.create(settings)
     catalog = catalog_store.load_for_startup(settings)
 
@@ -59,7 +64,30 @@ async def build_state(settings: Settings) -> AppState:
         catalog=catalog,
         publisher=publisher,
         producer=producer,
+        db_engine=db_engine,
+        sessions=create_sessionmaker(db_engine),
     )
+
+
+async def _migrate(settings: Settings) -> None:
+    """Bring the schema up to date at startup.
+
+    Convenient in development, where a clean clone should just work. Production
+    sets `LEDGER_DATABASE_AUTO_MIGRATE=false` and runs `alembic upgrade head`
+    as a deliberate step, because a schema change is not something that should
+    happen as a side effect of a container restarting.
+    """
+    import anyio
+    from alembic import command
+    from alembic.config import Config
+
+    def _run() -> None:
+        config = Config(str(REPO_ROOT / "alembic.ini"))
+        config.set_main_option("script_location", str(REPO_ROOT / "migrations"))
+        command.upgrade(config, "head")
+
+    await anyio.to_thread.run_sync(_run)
+    log.info("database schema is up to date")
 
 
 @asynccontextmanager
@@ -82,6 +110,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         state.engine.close()
         await state.producer.stop()
+        await state.db_engine.dispose()
         log.info("ledger shut down")
 
 
@@ -109,6 +138,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api/auth")
     app.include_router(chat.router, prefix="/api")
     app.include_router(audit.router, prefix="/api")
+    app.include_router(accounts.router, prefix="/api/accounts")
+    app.include_router(conversations.router, prefix="/api")
     return app
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from aiokafka import AIOKafkaProducer
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from ledger.catalog.models import Catalog
 from ledger.config import Settings
@@ -23,3 +24,7 @@ class AppState:
     catalog: Catalog
     publisher: AuditPublisher
     producer: AIOKafkaProducer
+    #: Accounts and conversations. Separate from the analytical engine above by
+    #: design -- that one is read-only, in-memory, and shared between processes.
+    db_engine: AsyncEngine
+    sessions: async_sessionmaker[AsyncSession]
