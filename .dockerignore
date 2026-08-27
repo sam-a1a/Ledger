@@ -1,0 +1,12 @@
+.git
+.venv
+.idea
+node_modules
+web/node_modules
+web/dist
+data/raw/*
+!data/raw/.gitkeep
+.pytest_cache
+.mypy_cache
+.ruff_cache
+**/__pycache__

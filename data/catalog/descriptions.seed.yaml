@@ -1,0 +1,100 @@
+# Hand-written data-dictionary entries: the guaranteed floor for column
+# descriptions, and the default path while no API key is configured.
+#
+# Resolution order is generated-cache -> LLM -> this file -> derived-from-profile,
+# and every column records which one it came from. Sourced from the TLC trip
+# record data dictionary plus the normalisation in engine/bootstrap.sql.
+
+vendor_id:
+  text: Code for the technology provider that supplied the trip record.
+  caveat: A vendor identifier, not a taxi or driver identifier.
+vendor_label:
+  text: Human-readable name of the technology provider that supplied the record.
+
+pickup_at:
+  text: Timestamp when the taximeter was engaged, in local New York time.
+  caveat: Naive local time; no timezone offset is recorded in the source.
+dropoff_at:
+  text: Timestamp when the taximeter was disengaged, in local New York time.
+pickup_date:
+  text: Calendar date of pickup, derived from pickup_at for convenient grouping.
+pickup_hour:
+  text: Hour of day of pickup, 0 to 23, derived from pickup_at.
+trip_duration_min:
+  text: Elapsed minutes between the meter being engaged and disengaged.
+  unit: minutes
+  caveat: Computed from the two timestamps; a handful of records are negative or implausibly long.
+
+passenger_count:
+  text: Number of passengers, entered manually by the driver.
+  caveat: Driver-entered and frequently missing, so counts are unreliable for demand analysis.
+trip_distance:
+  text: Distance travelled, as reported by the taximeter.
+  unit: miles
+  caveat: Has a long tail; a small number of records report hundreds of miles.
+
+ratecode_id:
+  text: Code for the rate in effect at the end of the trip.
+ratecode_label:
+  text: Rate in effect at the end of the trip, such as Standard rate, JFK, or Negotiated fare.
+
+store_and_fwd_flag:
+  text: Y when the record was held in vehicle memory before sending, because the vehicle had no server connection.
+  caveat: An operational transmission flag, unrelated to the trip itself.
+
+pickup_location_id:
+  text: TLC taxi zone identifier where the meter was engaged.
+dropoff_location_id:
+  text: TLC taxi zone identifier where the meter was disengaged.
+pickup_borough:
+  text: New York borough containing the pickup zone.
+pickup_zone:
+  text: Named TLC taxi zone where the trip began, such as JFK Airport or Midtown Center.
+dropoff_borough:
+  text: New York borough containing the dropoff zone.
+dropoff_zone:
+  text: Named TLC taxi zone where the trip ended.
+
+payment_type:
+  text: Numeric code for how the passenger paid.
+payment_type_label:
+  text: How the passenger paid, such as Credit card, Cash, or Dispute.
+  caveat: Tips are only recorded for card payments, so cash tips appear as zero.
+
+fare_amount:
+  text: Time-and-distance fare calculated by the meter, before any surcharges or tips.
+  unit: USD
+  caveat: Can be negative on refunded or voided trips.
+extra:
+  text: Miscellaneous extras and surcharges, chiefly the rush hour and overnight charges.
+  unit: USD
+mta_tax:
+  text: MTA tax triggered automatically by the metered rate in use.
+  unit: USD
+tip_amount:
+  text: Tip recorded for the trip.
+  unit: USD
+  caveat: Automatically populated for card payments only; cash tips are not recorded and read as zero.
+tolls_amount:
+  text: Total of all tolls paid during the trip.
+  unit: USD
+improvement_surcharge:
+  text: Improvement surcharge assessed on trips at the flag drop.
+  unit: USD
+total_amount:
+  text: Total amount charged to the passenger, including all surcharges.
+  unit: USD
+  caveat: Excludes cash tips, which are never recorded.
+congestion_surcharge:
+  text: New York State congestion surcharge applied to the trip.
+  unit: USD
+airport_fee:
+  text: Flat fee applied to pickups at LaGuardia and JFK airports.
+  unit: USD
+cbd_congestion_fee:
+  text: Manhattan Central Business District congestion charge, in effect since 5 January 2025.
+  unit: USD
+  caveat: Null for every trip before January 2025, because the column did not exist in those files.
+
+tenant_id:
+  text: Internal partition key applied by the query compiler; never exposed to any caller.

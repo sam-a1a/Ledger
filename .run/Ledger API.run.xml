@@ -1,0 +1,21 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Ledger API" type="Python.FastAPI" factoryName="FastAPI">
+    <module name="ledger" />
+    <option name="ENV_FILES" value="" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="PARENT_ENVS" value="true" />
+    <envs>
+      <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="LEDGER_MODEL" value="fake" />
+    </envs>
+    <option name="SDK_HOME" value="" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="IS_MODULE_SDK" value="true" />
+    <option name="ADD_CONTENT_ROOTS" value="true" />
+    <option name="ADD_SOURCE_ROOTS" value="true" />
+    <option name="modulePath" value="ledger.api.app" />
+    <option name="appName" value="app" />
+    <option name="uvicornOptions" value="--reload --port 8000" />
+    <method v="2" />
+  </configuration>
+</component>
