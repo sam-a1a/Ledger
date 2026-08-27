@@ -57,15 +57,22 @@ services:
       seed:
         condition: service_completed_successfully
     environment:
-      LEDGER_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      LEDGER_DATA_DIR: /app/data
-      LEDGER_CATALOG_MODE: offline
-      # Unset resolves to the scripted model, and the UI says so. Setting a key
-      # switches to the real one with no other change.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      LEDGER_JWT_SECRET: ${LEDGER_JWT_SECRET:-}
+      - LEDGER_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - LEDGER_DATA_DIR=/app/data
+      - LEDGER_CATALOG_MODE=offline
+      # Pass-through: present only if the host defines them.
+      - ANTHROPIC_API_KEY
+      - LEDGER_JWT_SECRET
+    # Pass-through form, deliberately. `KEY: ${VAR:-}` sets the variable to an
+    # *empty string* when the host has not defined it, which overrides the
+    # application default rather than falling back to it. An empty signing key
+    # made every login fail with "HMAC key must not be empty" while the
+    # container still reported itself healthy. The list form leaves an
+    # undefined variable genuinely unset.
+    #
+    # Unset ANTHROPIC_API_KEY resolves to the scripted model, and the UI says
+    # so. Setting one switches to the real model with no other change.
     ports:
-      # 8000 collides with almost everything; the container keeps it internally.
       - "8077:8000"
     volumes:
       - ./data:/app/data:ro
@@ -75,6 +82,27 @@ services:
       timeout: 5s
       retries: 24
       start_period: 10s
+
+  audit-consumer:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command: ["ledger-audit"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    environment:
+      LEDGER_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LEDGER_DATA_DIR: /app/data
+      LEDGER_CATALOG_MODE: offline
+    volumes:
+      # Writable, unlike the API's mount: this is the process that materialises
+      # the log. Its own failure domain, so a slow or crashed consumer cannot
+      # take chat down or backpressure the API's event loop.
+      - ./data:/app/data
+    restart: unless-stopped
 
   web:
     build:

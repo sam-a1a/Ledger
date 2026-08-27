@@ -415,3 +415,40 @@ async def test_nobody_can_name_the_internal_tenant_column(
     )
     assert not result.ok
     assert result.error is ErrorCode.UNKNOWN_COLUMN
+
+
+async def test_a_bucket_built_from_a_handful_of_rows_is_called_out(
+    analyst_ctx: ToolContext,
+) -> None:
+    """Real TLC data carries timestamps years outside the file's month.
+
+    Unflagged, those become chart points indistinguishable from real ones while
+    being drawn from a single row -- a confidently wrong picture that no amount
+    of query correctness prevents. The rows are kept, not dropped; the model is
+    told which buckets are negligible.
+    """
+    from ledger.tools import analytics_tools
+
+    names = ["bucket", "row_count"]
+    rows: list[list[object]] = [
+        ["2008-12-01T00:00:00", 2],
+        ["2024-12-01T00:00:00", 3_668_358],
+        ["2025-01-01T00:00:00", 3_475_236],
+    ]
+    notes = analytics_tools._sparse_bucket_notes(names, rows)  # type: ignore[arg-type]
+
+    assert notes
+    assert "2008-12-01" in notes[0]
+    assert "2024-12-01" not in notes[0]
+
+
+async def test_a_healthy_series_is_not_flagged(analyst_ctx: ToolContext) -> None:
+    """The guard must stay quiet on ordinary data, or it becomes noise."""
+    from ledger.tools import analytics_tools
+
+    rows: list[list[object]] = [
+        ["2025-01-01T00:00:00", 1000],
+        ["2025-02-01T00:00:00", 1100],
+        ["2025-03-01T00:00:00", 900],
+    ]
+    assert analytics_tools._sparse_bucket_notes(["bucket", "row_count"], rows) == []  # type: ignore[arg-type]

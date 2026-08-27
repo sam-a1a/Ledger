@@ -47,6 +47,12 @@ MAX_TIME_BUCKETS = 2_000
 #: More series than this and a legend is useless.
 MAX_SERIES = 8
 
+#: A bucket holding less than this share of the matched rows is called out.
+#: Real data is dirty: the TLC files carry a handful of records timestamped
+#: years outside their nominal month, and unflagged they become chart points
+#: indistinguishable from real ones -- drawn from a single row.
+SPARSE_BUCKET_FRACTION = 0.001
+
 
 # ---------------------------------------------------------------- arguments
 
@@ -363,10 +369,18 @@ async def timeseries(args: TimeseriesArgs, ctx: ToolContext) -> ToolResult:
                 field="group_by",
             )
 
+    # A row count is always included, even when it was not asked for. A time
+    # series without one is how a bucket built from a single bad timestamp
+    # plots identically to a real month -- the count is what makes that
+    # visible, to the model and to anyone reading the chart.
+    metrics = list(args.metrics)
+    if not any(m.op == "count" for m in metrics):
+        metrics.append(Metric.model_construct(op="count", column=None, alias="row_count"))
+
     compiled = sqlc.compile_timeseries(
         time_column=args.time_column,
         grain=args.grain,
-        metrics=args.metrics,
+        metrics=metrics,
         filters=args.filters,
         group_by=args.group_by,
         limit=MAX_TIME_BUCKETS,
@@ -381,10 +395,43 @@ async def timeseries(args: TimeseriesArgs, ctx: ToolContext) -> ToolResult:
             f"hit the {MAX_TIME_BUCKETS:,} bucket limit at grain={args.grain!r}; "
             "use a coarser grain or narrow the range."
         )
+    notes.extend(_sparse_bucket_notes(names, rows))
     if not rows and args.filters:
         notes.extend(await _diagnose_empty(ctx, args.filters))
 
     return _bounded_result("timeseries", compiled, names, rows, ctx, notes)
+
+
+def _sparse_bucket_notes(names: list[str], rows: list[list[JsonScalar]]) -> list[str]:
+    """Name time buckets that hold a negligible share of the rows.
+
+    They are not removed. Silently dropping rows would be a worse failure than
+    reporting them, and the caller may genuinely want them. But a bucket built
+    from one row out of ten million plots exactly like a real one, so the model
+    is told which ones they are and can exclude or caveat them.
+    """
+    if "row_count" not in names or len(rows) < 3:
+        return []
+    index = names.index("row_count")
+    counts = [_as_int(row[index]) for row in rows]
+    total = sum(counts)
+    if not total:
+        return []
+
+    sparse = [
+        (str(rows[i][0])[:10], count)
+        for i, count in enumerate(counts)
+        if count / total < SPARSE_BUCKET_FRACTION
+    ]
+    if not sparse:
+        return []
+    listed = ", ".join(f"{bucket} ({count:,} row(s))" for bucket, count in sparse[:6])
+    return [
+        f"{len(sparse)} bucket(s) hold under "
+        f"{SPARSE_BUCKET_FRACTION:.1%} of the matched rows each: {listed}. "
+        "These are usually bad timestamps in the source data; consider filtering "
+        "the time range rather than charting them alongside real periods."
+    ]
 
 
 async def distribution(args: DistributionArgs, ctx: ToolContext) -> ToolResult:

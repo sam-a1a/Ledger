@@ -202,3 +202,18 @@ async def test_every_call_is_audited_before_and_after(analyst_ctx: ToolContext) 
     # The pair shares a call id, which is what lets the consumer spot an orphan.
     assert events.requested[0].call_id == events.completed[0].call_id
     assert events.completed[0].row_count == 1
+
+
+async def test_timeseries_always_reports_a_row_count(analyst_ctx: ToolContext) -> None:
+    """Even when not asked for. See the sparse-bucket guard below for why."""
+    result = await execute(
+        "timeseries",
+        {
+            "time_column": "pickup_at",
+            "grain": "month",
+            "metrics": [{"op": "avg", "column": "fare_amount", "alias": "avg_fare"}],
+        },
+        analyst_ctx,
+    )
+    assert result.ok
+    assert "row_count" in result.column_names()

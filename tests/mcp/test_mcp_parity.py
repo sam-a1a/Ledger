@@ -12,9 +12,11 @@ import logging
 import sys
 
 import pytest
+from pydantic import ValidationError
 
+from ledger.mcp_server import schemas
 from ledger.mcp_server import server as mcp_server
-from ledger.tools import registry
+from ledger.tools import args, registry
 
 TOOL_FUNCTIONS = {
     "list_columns": mcp_server.list_columns,
@@ -100,3 +102,57 @@ def test_the_mcp_role_defaults_to_the_restrictive_one() -> None:
     from ledger.config import Settings
 
     assert Settings().mcp_role == "viewer"
+
+
+# --------------------------------------------------------------------------
+# Two regressions, both found by driving the server over stdio as a real client
+# rather than by inspecting it. Neither was visible from the tool listing, which
+# looked perfectly healthy in both cases.
+# --------------------------------------------------------------------------
+
+WIRE_TO_REAL = {
+    schemas.FilterArg: args.Filter,
+    schemas.MetricArg: args.Metric,
+    schemas.OrderByArg: args.OrderBy,
+    schemas.HavingArg: args.Having,
+    schemas.ChartSpecArg: args.ChartSpec,
+}
+
+
+@pytest.mark.parametrize(("wire", "real"), list(WIRE_TO_REAL.items()), ids=lambda m: m.__name__)
+def test_wire_models_mirror_the_real_argument_models(wire: type, real: type) -> None:
+    """The mirrors exist so MCP can validate without a scope; they must not drift."""
+    assert set(wire.model_fields) == set(real.model_fields)
+    for name, field in wire.model_fields.items():
+        assert field.is_required() == real.model_fields[name].is_required(), name
+
+
+def test_wire_models_validate_without_a_scoped_catalogue() -> None:
+    """The bug this guards: MCP validates arguments before the handler runs.
+
+    It cannot supply Pydantic's validation context, so annotating a wrapper with
+    a model that reads the caller's scope out of that context fails *every* call
+    with "arguments were validated without a scoped catalogue" -- while
+    `tools/list` still returns all eight tools looking entirely healthy.
+    """
+    schemas.MetricArg.model_validate({"op": "count"})
+    schemas.FilterArg.model_validate({"column": "pickup_zone", "op": "=", "value": "x"})
+    schemas.ChartSpecArg.model_validate({"kind": "bar", "x": "a", "y": ["b"], "title": "t"})
+
+    # ...and the real models still refuse, which is what makes them the gate.
+    with pytest.raises(ValidationError):
+        args.Metric.model_validate({"op": "count"})
+
+
+def test_the_server_does_not_build_resources_outside_its_event_loop() -> None:
+    """The other bug: an aiokafka producer bound to a loop that is then closed.
+
+    `main()` used to build state under its own `asyncio.run()` before calling
+    `mcp.run()`, which starts a different loop. Every tool call then hung inside
+    `force_metadata_update`, with a traceback pointing at Kafka rather than at
+    the loop. Resources belong in the lifespan.
+    """
+    source = inspect.getsource(mcp_server.main)
+    assert "asyncio.run" not in source
+    assert mcp_server.mcp.settings is not None  # the server was constructed
+    assert mcp_server._lifespan is not None

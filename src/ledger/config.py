@@ -146,6 +146,14 @@ class Settings(BaseSettings):
         settings must never raise, or the CLI and the test suite become
         hostage to a deployment concern.
         """
+        if not self.jwt_secret.strip():
+            # Compose's `KEY: ${VAR:-}` form sets an empty string rather than
+            # leaving the variable unset, which silently overrides the default.
+            raise ConfigurationError(
+                "LEDGER_JWT_SECRET is empty. If this came from a container "
+                "environment, note that `KEY: ${VAR:-}` sets an empty value "
+                "rather than leaving the variable unset; use the list form."
+            )
         if self.auth_mode is AuthMode.STRICT:
             if self.jwt_secret == DEV_JWT_SECRET:
                 raise ConfigurationError(

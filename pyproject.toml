@@ -32,6 +32,7 @@ data = [
 [project.scripts]
 ledger = "ledger.cli:main"
 ledger-mcp = "ledger.mcp_server.server:main"
+ledger-audit = "ledger.governance.consumer:main"
 
 [dependency-groups]
 dev = [
