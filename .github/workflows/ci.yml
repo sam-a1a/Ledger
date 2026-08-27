@@ -29,17 +29,42 @@ jobs:
   test:
     name: pytest
     runs-on: ubuntu-latest
+    services:
+      # The same broker Compose runs. Ledger audits every tool call before
+      # serving it, so a large part of the suite genuinely needs one.
+      kafka:
+        image: apache/kafka:4.3.1
+        ports: ["9092:9092"]
+        env:
+          KAFKA_NODE_ID: "1"
+          KAFKA_PROCESS_ROLES: "broker,controller"
+          KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+          KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+          KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+          KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+          KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+          CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --all-extras
-      - name: Run offline test suite
+      - name: Run test suite
         run: uv run pytest --cov --cov-report=xml --cov-report=term-missing
         env:
-          # Tests start their own broker via Testcontainers; Docker is present
-          # on ubuntu-latest runners.
+          # Pointing at the service container makes the Testcontainers fixture a
+          # no-op, so CI starts one broker rather than one per worker.
+          LEDGER_KAFKA_BOOTSTRAP: localhost:9092
           LEDGER_CATALOG_MODE: offline
           LEDGER_MODEL: fake
       - uses: actions/upload-artifact@v4

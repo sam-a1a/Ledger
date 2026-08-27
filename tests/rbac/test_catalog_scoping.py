@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from ledger.catalog.models import Catalog
 from ledger.catalog.scope import scope_catalog
-from ledger.security.policy import restricted_columns
+from ledger.security.policy import hidden_from, restricted_columns
 from ledger.security.principal import Principal, Role
 
 
-def test_viewer_scope_omits_every_restricted_column(catalog: Catalog) -> None:
+def test_viewer_scope_omits_everything_hidden_from_a_viewer(catalog: Catalog) -> None:
+    """Covers both analyst-only columns and internal plumbing."""
     scope = scope_catalog(catalog, Principal(subject="v", role=Role.VIEWER))
+    assert hidden_from("viewer").isdisjoint(scope.columns)
     assert restricted_columns().isdisjoint(scope.columns)
 
 

@@ -20,7 +20,6 @@ dependencies = [
     "anthropic==1.1.0",
     "mcp==2.1.1",
     "httpx==0.28.1",
-    "python-ulid==4.0.1",
     "pyyaml==6.0.3",
 ]
 
@@ -59,6 +58,9 @@ line-length = 100
 target-version = "py313"
 src = ["src", "tests", "scripts"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["ledger", "tests", "scripts"]
+
 [tool.ruff.lint]
 select = [
     "E", "W",    # pycodestyle
@@ -85,6 +87,16 @@ ignore = [
 # Exploration code interpolates local Paths into SQL to inspect files one at a
 # time. Not a query surface, and nothing model-controlled reaches it.
 "notebooks/**" = ["S608", "E402"]
+# Building SQL is this module's entire job, so S608 fires on every line of it
+# and says nothing. The safety argument is structural and documented in the
+# module docstring: identifiers are re-emitted from the catalogue rather than
+# from model input, operators and metrics come from closed dispatch tables
+# keyed by Literal types, and every value is bound as a parameter. Those
+# properties are asserted by the property tests in
+# tests/unit/test_sql_compiler.py, which is a far stronger check than this
+# lint rule -- and confining the ignore to one file keeps the rule meaningful
+# everywhere else.
+"src/ledger/engine/sql.py" = ["S608"]
 
 # ---------------------------------------------------------------- mypy
 

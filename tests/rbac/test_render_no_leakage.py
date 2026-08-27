@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from ledger.catalog.models import ScopedCatalog
 from ledger.catalog.render import render_catalog
-from ledger.security.policy import restricted_columns
+from ledger.security.policy import hidden_from
 
 
 def test_viewer_prompt_mentions_no_restricted_column(viewer_scope: ScopedCatalog) -> None:
     rendered = render_catalog(viewer_scope)
-    for column in restricted_columns():
+    for column in hidden_from("viewer"):
         assert column not in rendered, f"{column} leaked into the viewer's prompt"
 
 

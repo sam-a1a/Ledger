@@ -62,7 +62,25 @@ def visible_to(column: str, role: str) -> bool:
 
 
 def restricted_columns() -> frozenset[str]:
-    """Every column no viewer may see. Used by the leakage test."""
+    """Columns an analyst may see and a viewer may not.
+
+    Distinct from :func:`internal_columns`: an internal column is never
+    selectable by anyone, but the SQL compiler still names the tenant key when
+    it injects the row-level predicate. Conflating the two makes a leakage
+    assertion fail on the compiler doing exactly its job.
+    """
     return frozenset(
-        name for name, level in COLUMN_SENSITIVITY.items() if level is not Sensitivity.PUBLIC
+        name for name, level in COLUMN_SENSITIVITY.items() if level is Sensitivity.RESTRICTED
     )
+
+
+def internal_columns() -> frozenset[str]:
+    """Columns no role may name. Plumbing, applied by the compiler."""
+    return frozenset(
+        name for name, level in COLUMN_SENSITIVITY.items() if level is Sensitivity.INTERNAL
+    )
+
+
+def hidden_from(role: str) -> frozenset[str]:
+    """Every column ``role`` must not learn exists, for whatever reason."""
+    return frozenset(name for name in COLUMN_SENSITIVITY if not visible_to(name, role))
