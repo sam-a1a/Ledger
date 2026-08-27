@@ -91,7 +91,9 @@ TOOLS: tuple[ToolSpec, ...] = (
         description=(
             "Compute metrics bucketed over time at a chosen grain, optionally "
             "split into a few series. Use this for trends, seasonality, and any "
-            "before-and-after comparison."
+            "before-and-after comparison. A row count per bucket is always "
+            "included, so check it before trusting a bucket: real data contains "
+            "bad timestamps that produce buckets built from a handful of rows."
         ),
         args_model=analytics.TimeseriesArgs,
         handler=analytics.timeseries,

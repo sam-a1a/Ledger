@@ -13,7 +13,10 @@ vendor_label:
 
 pickup_at:
   text: Timestamp when the taximeter was engaged, in local New York time.
-  caveat: Naive local time; no timezone offset is recorded in the source.
+  caveat: >-
+    Naive local time, no timezone offset. A handful of records carry timestamps
+    years outside the file's nominal month, so filter the range explicitly
+    rather than trusting the minimum and maximum.
 dropoff_at:
   text: Timestamp when the taximeter was disengaged, in local New York time.
 pickup_date:

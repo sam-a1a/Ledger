@@ -20,7 +20,6 @@ this process fails fast without a broker exactly as the API does.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -28,18 +27,51 @@ from typing import Any
 
 from mcp.server import MCPServer
 
+from ledger.api.app import build_state
 from ledger.api.state import AppState
 from ledger.catalog.scope import scope_catalog
 from ledger.config import Settings, get_settings
 from ledger.logging import configure_logging, get_logger
+from ledger.mcp_server.schemas import (
+    ChartSpecArg,
+    FilterArg,
+    HavingArg,
+    MetricArg,
+    OrderByArg,
+)
 from ledger.security.principal import Channel, Principal, Role
-from ledger.tools.args import ChartSpec, Filter, Having, Metric, OrderBy
 from ledger.tools.context import ResultCache, ToolContext
 from ledger.tools.executor import execute
 
 log = get_logger(__name__)
 
-mcp = MCPServer("Ledger")
+
+@asynccontextmanager
+async def _lifespan(server: MCPServer[Any]) -> AsyncIterator[AppState]:
+    """Build the process resources inside the server's own event loop.
+
+    This matters more than it looks. Creating the Kafka producer under a
+    separate `asyncio.run()` in `main()` binds it to a loop that is closed
+    before `mcp.run()` starts its own -- so every tool call then hangs in
+    `force_metadata_update` with an error that points at Kafka rather than at
+    the loop. Startup still fails fast without a broker, because `build_state`
+    raises here.
+    """
+    global _state
+
+    settings = get_settings()
+    settings.validate_for_startup()
+    _state = await build_state(settings)
+    log.info("ledger-mcp ready as %s", settings.mcp_role)
+    try:
+        yield _state
+    finally:
+        _state.engine.close()
+        await _state.producer.stop()
+        _state = None
+
+
+mcp: MCPServer[AppState] = MCPServer("Ledger", lifespan=_lifespan)
 
 _state: AppState | None = None
 #: One cache for the process. An MCP client has no conversation boundary, so
@@ -87,6 +119,12 @@ async def _run(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
+# The eight tools. Arguments are annotated with the context-free mirrors from
+# `schemas.py`, not the real models: `@mcp.tool()` validates before the handler
+# runs and cannot supply Pydantic's validation context, so the real models --
+# which read the caller's scope from it -- fail every call while the tool list
+# still looks healthy. Scoped validation happens in the executor.
+#
 # The eight tools. Descriptions are duplicated from the registry on purpose:
 # `@mcp.tool()` reads the docstring, and test_mcp_parity asserts the schemas
 # stay structurally identical to the ones the chat application advertises.
@@ -119,7 +157,7 @@ async def describe_column(column: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def count_rows(filters: list[Filter] | None = None) -> dict[str, Any]:
+async def count_rows(filters: list[FilterArg] | None = None) -> dict[str, Any]:
     """Count rows matching a set of filters.
 
     If nothing matches, the result explains which filter eliminated everything
@@ -130,11 +168,11 @@ async def count_rows(filters: list[Filter] | None = None) -> dict[str, Any]:
 
 @mcp.tool()
 async def aggregate(
-    metrics: list[Metric],
+    metrics: list[MetricArg],
     group_by: list[str] | None = None,
-    filters: list[Filter] | None = None,
-    having: list[Having] | None = None,
-    order_by: list[OrderBy] | None = None,
+    filters: list[FilterArg] | None = None,
+    having: list[HavingArg] | None = None,
+    order_by: list[OrderByArg] | None = None,
     limit: int = 100,
 ) -> dict[str, Any]:
     """Compute one or more metrics, optionally grouped and filtered.
@@ -160,9 +198,9 @@ async def aggregate(
 @mcp.tool()
 async def top_n(
     dimension: str,
-    metric: Metric,
+    metric: MetricArg,
     n: int = 10,
-    filters: list[Filter] | None = None,
+    filters: list[FilterArg] | None = None,
     direction: str = "top",
     min_group_rows: int = 0,
 ) -> dict[str, Any]:
@@ -189,9 +227,9 @@ async def top_n(
 @mcp.tool()
 async def timeseries(
     time_column: str,
-    metrics: list[Metric],
+    metrics: list[MetricArg],
     grain: str = "day",
-    filters: list[Filter] | None = None,
+    filters: list[FilterArg] | None = None,
     group_by: str | None = None,
 ) -> dict[str, Any]:
     """Compute metrics bucketed over time, optionally split into a few series.
@@ -215,7 +253,7 @@ async def timeseries(
 @mcp.tool()
 async def distribution(
     column: str,
-    filters: list[Filter] | None = None,
+    filters: list[FilterArg] | None = None,
     bins: int = 20,
     clip_percentile: float = 99.0,
 ) -> dict[str, Any]:
@@ -238,7 +276,7 @@ async def distribution(
 
 
 @mcp.tool()
-async def plot(result_id: str, chart: ChartSpec) -> dict[str, Any]:
+async def plot(result_id: str, chart: ChartSpecArg) -> dict[str, Any]:
     """Render a chart from a result you already computed, by its result_id.
 
     Choose the chart kind and which of that result's columns map to the axes.
@@ -259,12 +297,6 @@ def _drop_none(arguments: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in arguments.items() if value is not None}
 
 
-async def _startup(settings: Settings) -> AppState:
-    from ledger.api.app import build_state
-
-    return await build_state(settings)
-
-
 def main(argv: list[str] | None = None) -> int:
     # stderr, always: stdout belongs to the JSON-RPC framing.
     configure_logging()
@@ -277,17 +309,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args(argv)
 
-    settings = get_settings()
-    settings.validate_for_startup()
-
-    global _state
-    _state = asyncio.run(_startup(settings))
-    log.info(
-        "ledger-mcp ready as %s over %s",
-        _state.settings.mcp_role,
-        "http" if args.http else "stdio",
-    )
-
+    # Resources are built by the lifespan, inside the server's event loop.
     if args.http:
         mcp.run(transport="streamable-http", host=args.host, port=args.port)
     else:
