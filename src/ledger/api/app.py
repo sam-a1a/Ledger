@@ -44,7 +44,7 @@ async def build_state(settings: Settings) -> AppState:
     )
     await ensure_topics(settings.kafka_bootstrap_servers, topics)
 
-    journal = EventJournal(settings.data_dir / "audit" / "journal.ndjson")
+    journal = EventJournal(settings.journal_path)
     publisher = KafkaAuditPublisher(producer, topics, journal)
     replayed = await publisher.drain_journal()
     if replayed:

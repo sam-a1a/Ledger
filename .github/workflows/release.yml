@@ -131,6 +131,7 @@ jobs:
           uv sync --all-extras
           uv run python -m scripts.make_fixture
           LEDGER_DATA_DIR=tests/fixtures/data uv run ledger catalog build
+          mkdir -p .smoke-state
 
       - name: Boot the published image
         run: |
@@ -140,15 +141,26 @@ jobs:
             -e LEDGER_KAFKA_BOOTSTRAP_SERVERS=localhost:9092 \
             -e LEDGER_DATA_DIR=/app/data \
             -e LEDGER_CATALOG_MODE=offline \
+            -e LEDGER_STATE_DIR=/app/state \
             -v "$PWD/tests/fixtures/data:/app/data:ro" \
+            -v "$PWD/.smoke-state:/app/state" \
             "$IMAGE"
 
       - name: Every readiness check must report healthy
         run: |
           for i in $(seq 1 40); do
-            if curl -sf http://localhost:8000/api/ready > ready.json; then break; fi
+            if curl -sf http://localhost:8000/api/ready > ready.json; then
+              ready=1; break
+            fi
             sleep 3
           done
+          # Say what went wrong. Falling through with an empty file produced a
+          # JSON decode traceback that named the parser rather than the cause.
+          if [ "${ready:-0}" != "1" ]; then
+            echo "::error::the API never became ready; container logs follow"
+            docker logs ledger-smoke 2>&1 | tail -40
+            exit 1
+          fi
           cat ready.json
           # `ready: true` is not enough on its own -- an endpoint with no checks
           # in it returns exactly that. Assert there are checks, and that every

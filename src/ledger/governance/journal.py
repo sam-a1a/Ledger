@@ -28,7 +28,11 @@ class EventJournal:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._lock = threading.Lock()
-        path.parent.mkdir(parents=True, exist_ok=True)
+        # Deliberately no mkdir here. The journal is only written when the
+        # broker is unreachable, so creating its directory at construction
+        # turns a rare degraded path into a startup requirement -- and the API
+        # mounts its dataset read-only, so that requirement is unmeetable on a
+        # clean deployment.
 
     @property
     def path(self) -> Path:
@@ -42,6 +46,7 @@ class EventJournal:
         lost exactly when it mattered.
         """
         line = event.model_dump_json() + "\n"
+        self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock, self._path.open("a", encoding="utf-8") as handle:
             handle.write(line)
             handle.flush()
