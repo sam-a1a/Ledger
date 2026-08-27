@@ -70,6 +70,13 @@ def _cmd_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    """Check the configuration before anything tries to use it."""
+    from ledger.doctor import main as doctor_main
+
+    return doctor_main()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ledger", description="Ledger admin CLI.")
     parser.add_argument("--version", action="version", version=f"ledger {__version__}")
@@ -82,6 +89,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     info = sub.add_parser("info", help="Show resolved configuration")
     info.set_defaults(func=_cmd_info)
+
+    doctor = sub.add_parser("doctor", help="Check every dependency and report what is wrong")
+    doctor.set_defaults(func=_cmd_doctor)
 
     from ledger.catalog.cli import register as register_catalog
 
