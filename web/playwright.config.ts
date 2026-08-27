@@ -21,7 +21,10 @@ const KAFKA = process.env.LEDGER_KAFKA_BOOTSTRAP ?? "localhost:29092";
 const REPO = new URL("..", import.meta.url).pathname;
 
 export default defineConfig({
-  testDir: "./e2e",
+  // `screenshots/` holds the README capture run, which is invoked explicitly
+  // via `npm run screenshots` rather than on every test run.
+  testDir: ".",
+  testMatch: process.env.SCREENSHOTS ? "screenshots/*.spec.ts" : "e2e/*.spec.ts",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

@@ -273,15 +273,16 @@ async def count_rows(args: CountRowsArgs, ctx: ToolContext) -> ToolResult:
     elif total:
         notes = [f"{matched:,} of {total:,} rows ({matched / total:.1%})."]
 
-    return ToolResult(
-        tool="count_rows",
-        columns=[
-            ResultColumn(name="matching_rows", type="integer"),
-            ResultColumn(name="total_rows", type="integer"),
-        ],
-        rows=[[matched, total]],
-        row_count=1,
-        notes=notes,
+    # Routed through the same bounding and caching path as every other tool.
+    # A count is a result like any other: it gets a result_id, it is citable,
+    # and nothing has to special-case it.
+    return _bounded_result(
+        "count_rows",
+        compiled,
+        ["matching_rows", "total_rows"],
+        [[matched, total]],
+        ctx,
+        notes,
     )
 
 
