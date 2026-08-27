@@ -1,11 +1,11 @@
 # Ledger HTTP scratch file (PyCharm / IntelliJ HTTP Client)
 
-GET http://127.0.0.1:8000/api/health
+GET http://127.0.0.1:8077/api/health
 Accept: application/json
 
 ###
 
-GET http://127.0.0.1:8000/api/ready
+GET http://127.0.0.1:8077/api/ready
 Accept: application/json
 
 ###

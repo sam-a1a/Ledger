@@ -34,3 +34,11 @@ web/.vite/
 .idea/workspace.xml
 .idea/httpRequests/
 .idea/dataSources/
+
+# Playwright
+web/test-results/
+web/playwright-report/
+web/.playwright/
+
+# Audit store (materialised from the log; rebuildable)
+data/audit/

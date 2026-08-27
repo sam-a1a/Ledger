@@ -6,9 +6,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from ledger import __version__
-from ledger.api.routes import auth, chat, health
+from ledger.api.routes import audit, auth, chat, health
 from ledger.api.state import AppState
 from ledger.catalog import store as catalog_store
 from ledger.config import Settings, get_settings
@@ -91,9 +92,23 @@ def create_app() -> FastAPI:
         summary="Streaming LLM chat over governed data.",
         lifespan=lifespan,
     )
+    settings = get_settings()
+    if settings.cors_origins:
+        # Development only: the Vite server and the API are separate origins
+        # because Vite's proxy cannot stream server-sent events. Behind nginx
+        # in production they share an origin and this does nothing.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_origins),
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "Accept"],
+        )
+
     app.include_router(health.router, prefix="/api")
     app.include_router(auth.router, prefix="/api/auth")
     app.include_router(chat.router, prefix="/api")
+    app.include_router(audit.router, prefix="/api")
     return app
 
 

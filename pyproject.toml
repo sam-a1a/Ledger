@@ -99,6 +99,9 @@ ignore = [
 # lint rule -- and confining the ignore to one file keeps the rule meaningful
 # everywhere else.
 "src/ledger/engine/sql.py" = ["S608"]
+# Same argument for the audit reader: its clauses are assembled from the
+# principal's role, never from a request. The parameters that vary are bound.
+"src/ledger/governance/store.py" = ["S608"]
 
 # ---------------------------------------------------------------- mypy
 
@@ -111,7 +114,7 @@ packages = ["ledger"]
 plugins = []
 
 [[tool.mypy.overrides]]
-module = ["duckdb.*", "aiokafka.*", "testcontainers.*"]
+module = ["duckdb.*", "aiokafka.*", "testcontainers.*", "pyarrow.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest

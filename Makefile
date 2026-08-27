@@ -31,7 +31,7 @@ test-live:  ## Run tests that hit the real model (needs ANTHROPIC_API_KEY)
 
 .PHONY: serve
 serve:  ## Run the API with reload
-	$(UV) run uvicorn ledger.api.app:app --reload --port 8000
+	$(UV) run uvicorn ledger.api.app:app --reload --port 8077
 
 .PHONY: fetch
 fetch:  ## Download the taxi dataset

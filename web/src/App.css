@@ -1,0 +1,108 @@
+.app { display: flex; flex-direction: column; height: 100%; }
+
+.masthead {
+  display: flex; align-items: baseline; gap: 0.75rem;
+  padding: 0.85rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.masthead h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.masthead .tagline { color: var(--text-faint); font-size: 12.5px; }
+.masthead .spacer { flex: 1; }
+
+.demo-banner {
+  padding: 0.5rem 1.5rem;
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.role-switcher { display: inline-flex; gap: 0; }
+.role-switcher button {
+  border-radius: 0; font-size: 12.5px; padding: 0.25rem 0.7rem;
+}
+.role-switcher button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.role-switcher button:last-child { border-radius: 0 var(--radius) var(--radius) 0; margin-left: -1px; }
+.role-switcher button[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #fff; position: relative;
+}
+
+.transcript { flex: 1; overflow-y: auto; padding: 1.75rem 1.5rem 3rem; }
+.transcript-inner { max-width: var(--measure); margin: 0 auto; }
+
+.turn { margin-bottom: 2rem; }
+.turn.user .bubble {
+  font-weight: 500;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--accent);
+}
+.answer { white-space: pre-wrap; }
+.answer.streaming::after {
+  content: "▌"; color: var(--accent); animation: blink 1.1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.empty { color: var(--text-muted); }
+.empty h2 { font-size: 15px; font-weight: 600; margin: 0 0 0.4rem; }
+.suggestions { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 1rem; align-items: flex-start; }
+.suggestions button { font-size: 13.5px; color: var(--text-muted); text-align: left; }
+
+.tool-row {
+  display: flex; align-items: center; gap: 0.6rem;
+  font-family: var(--mono); font-size: 12px; color: var(--text-muted);
+  padding: 0.3rem 0 0.3rem 0.7rem;
+  border-left: 2px solid var(--border-subtle);
+}
+.tool-row.running { border-left-color: var(--accent); }
+.tool-row.error { border-left-color: var(--danger); color: var(--danger); }
+.tool-row .name { color: var(--text); }
+.tool-row .dot { color: var(--text-faint); }
+
+.trace { margin-top: 0.9rem; border-top: 1px solid var(--border-subtle); padding-top: 0.5rem; }
+.trace summary {
+  cursor: pointer; font-size: 12px; color: var(--text-muted);
+  font-family: var(--mono); list-style: none;
+}
+.trace summary::-webkit-details-marker { display: none; }
+.trace summary::before { content: "▸ "; }
+.trace[open] summary::before { content: "▾ "; }
+
+.trace table { width: 100%; border-collapse: collapse; margin-top: 0.6rem; font-family: var(--mono); font-size: 11.5px; }
+.trace th {
+  text-align: left; font-weight: 500; color: var(--text-faint);
+  border-bottom: 1px solid var(--border-subtle); padding: 0.3rem 0.5rem 0.3rem 0;
+}
+.trace td { padding: 0.35rem 0.5rem 0.35rem 0; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+.trace td.num { text-align: right; color: var(--text-muted); white-space: nowrap; }
+.trace .args { color: var(--text-muted); word-break: break-word; }
+.trace .failed { color: var(--danger); }
+.trace .note { color: var(--text-faint); font-size: 11px; }
+
+.chart-card {
+  margin: 1.1rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.9rem;
+}
+
+.composer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.9rem 1.5rem 1.1rem;
+}
+.composer form { max-width: var(--measure); margin: 0 auto; display: flex; gap: 0.6rem; }
+.composer textarea {
+  flex: 1; resize: none; font: inherit;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--text);
+}
+.composer textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.error-note {
+  margin-top: 0.75rem; padding: 0.5rem 0.7rem;
+  background: var(--danger-soft); color: var(--danger);
+  border-radius: var(--radius); font-size: 13px;
+}

@@ -12,6 +12,7 @@ suggested name -- because turn two has to depend on what turn one was told.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -84,14 +85,17 @@ def _chunks(text: str) -> list[str]:
 
 
 class _FakeStream:
-    def __init__(self, turn: ScriptedTurn, index: int) -> None:
+    def __init__(self, turn: ScriptedTurn, index: int, delay_ms: int = 0) -> None:
         self._turn = turn
         self._index = index
+        self._delay_s = delay_ms / 1000
 
     async def __aiter__(self) -> AsyncIterator[TurnEvent]:
         for chunk in _chunks(self._turn.thinking):
             yield ThinkingDelta(chunk)
         for chunk in _chunks(self._turn.text):
+            if self._delay_s:
+                await asyncio.sleep(self._delay_s)
             yield TextDelta(chunk)
         for position, (name, arguments) in enumerate(self._turn.tool_calls):
             yield ToolUseReady(
@@ -125,9 +129,10 @@ class FakeModelClient:
 
     name = "fake"
 
-    def __init__(self, responder: Responder) -> None:
+    def __init__(self, responder: Responder, *, token_delay_ms: int = 0) -> None:
         self._responder = responder
         self._turn_index = 0
+        self._token_delay_ms = token_delay_ms
 
     @asynccontextmanager
     async def stream_turn(
@@ -138,6 +143,6 @@ class FakeModelClient:
         tools: list[dict[str, Any]],
     ) -> AsyncIterator[_FakeStream]:
         turn = self._responder(messages)
-        stream = _FakeStream(turn, self._turn_index)
+        stream = _FakeStream(turn, self._turn_index, self._token_delay_ms)
         self._turn_index += 1
         yield stream
