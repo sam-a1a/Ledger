@@ -161,4 +161,13 @@ exclude_also = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
     "@overload",
+    # A stdio entry point runs a server loop; calling it from a test would
+    # block the run rather than assert anything. The behaviour that matters
+    # inside it is covered by driving the server as a real client.
+    "if __name__ == .__main__.:",
 ]
+# Reported per module, not just as a total, so an average cannot hide a module
+# that is barely tested. `scripts/coverage_floors.py` enforces the per-module
+# floors below and prints the table CI publishes to its job summary.
+show_missing = true
+skip_covered = false

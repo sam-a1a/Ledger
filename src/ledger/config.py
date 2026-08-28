@@ -5,6 +5,7 @@ Every knob the deployment can turn lives here. Nothing else reads ``os.environ``
 
 from __future__ import annotations
 
+import json
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -78,7 +79,7 @@ class Settings(BaseSettings):
 
     # --- data -------------------------------------------------------------
     data_dir: Path = REPO_ROOT / "data"
-    months: tuple[str, ...] = ("2024-12", "2025-01", "2025-02")
+    months: Annotated[tuple[str, ...], NoDecode] = ("2024-12", "2025-01", "2025-02")
     materialize: bool = False
     duckdb_threads: int = 4
     duckdb_memory_limit: str = "2GB"
@@ -112,7 +113,7 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("analyst_emails", "cors_origins", mode="before")
+    @field_validator("analyst_emails", "cors_origins", "months", mode="before")
     @classmethod
     def _split_commas(cls, value: object) -> object:
         """Accept `a@x.com,@y.com` as well as a JSON list.
@@ -126,14 +127,21 @@ class Settings(BaseSettings):
         all: without it the JSON decode happens in the settings source, before
         any validator runs, and the crash arrives with no way to intercept it.
         """
-        if isinstance(value, str):
-            text = value.strip()
-            if not text:
-                return ()
-            if text.startswith("["):
-                return value
-            return tuple(part.strip() for part in text.split(",") if part.strip())
-        return value
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return ()
+        if text.startswith("["):
+            # Decoded here rather than handed back: `NoDecode` means nothing
+            # else will, and returning the raw string produced a "should be a
+            # valid tuple" error on the form that used to be the only one
+            # accepted.
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"expected a JSON list or a comma-separated list: {exc}") from exc
+        return tuple(part.strip() for part in text.split(",") if part.strip())
 
     @field_validator("jwt_secret", mode="before")
     @classmethod
@@ -271,6 +279,15 @@ class Settings(BaseSettings):
                 "LEDGER_JWT_SECRET is empty. If this came from a container "
                 "environment, note that `KEY: ${VAR:-}` sets an empty value "
                 "rather than leaving the variable unset; use the list form."
+            )
+        if not self.months:
+            # An empty comma list reads as "not configured", which is the right
+            # reading for the optional lists and the wrong one here: the engine
+            # would come up over no parquet at all and every query would return
+            # nothing, healthily.
+            raise ConfigurationError(
+                "LEDGER_MONTHS is empty, so there is no data to serve. "
+                'Set it to a comma-separated list, for example "2024-12,2025-01".'
             )
         if self.auth_mode is AuthMode.STRICT:
             if self.jwt_secret == DEV_JWT_SECRET:
