@@ -12,9 +12,13 @@ const SUGGESTIONS = [
 export function Transcript({
   turns,
   onSuggestion,
+  token,
+  conversationId,
 }: {
   turns: Turn[];
   onSuggestion: (text: string) => void;
+  token?: string | null;
+  conversationId?: string | null;
 }) {
   return (
     <div className="transcript" data-testid="transcript">
@@ -28,7 +32,12 @@ export function Transcript({
                 <div className="bubble">{turn.text}</div>
               </div>
             ) : (
-              <AssistantBlock key={turn.id} turn={turn} />
+              <AssistantBlock
+                key={turn.id}
+                turn={turn}
+                token={token}
+                conversationId={conversationId}
+              />
             ),
           )
         )}
@@ -37,7 +46,15 @@ export function Transcript({
   );
 }
 
-function AssistantBlock({ turn }: { turn: AssistantTurn }) {
+function AssistantBlock({
+  turn,
+  token,
+  conversationId,
+}: {
+  turn: AssistantTurn;
+  token?: string | null;
+  conversationId?: string | null;
+}) {
   const running = turn.calls.filter((c) => c.status === "running");
   return (
     <div className="turn assistant" data-testid="assistant-turn" data-status={turn.status}>
@@ -58,7 +75,12 @@ function AssistantBlock({ turn }: { turn: AssistantTurn }) {
 
       {turn.errorMessage && <div className="error-note">{turn.errorMessage}</div>}
 
-      <TracePanel calls={turn.calls} />
+      <TracePanel
+        calls={turn.calls}
+        token={token}
+        conversationId={conversationId}
+        settled={turn.status !== "streaming"}
+      />
     </div>
   );
 }
