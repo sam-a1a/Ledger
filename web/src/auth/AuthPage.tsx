@@ -1,6 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as api from "../api/account";
-import type { Session } from "../api/account";
+import type { OAuthProvider, Session } from "../api/account";
+
+const OAUTH_FAILED = "That sign-in could not be completed. Try again.";
+const OAUTH_MESSAGES: Record<string, string> = {
+  cancelled: "That sign-in was cancelled.",
+  email_in_use:
+    "An account already uses that email address. Sign in with your password, then link the provider from settings.",
+  failed: OAUTH_FAILED,
+};
 
 type Mode = "signin" | "signup" | "forgot" | "reset";
 
@@ -13,6 +21,35 @@ export function AuthPage({ onSignedIn }: { onSignedIn: (session: Session) => voi
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [providers, setProviders] = useState<OAuthProvider[]>([]);
+
+  // Asked for rather than assumed: a deployment with no client credentials
+  // must not show a button that fails after the redirect.
+  useEffect(() => {
+    let live = true;
+    api
+      .oauthProviders()
+      .then((found) => live && setProviders(found))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // A provider sign-in comes back as a redirect carrying its result in the
+  // fragment, so this runs on load rather than in response to anything here.
+  useEffect(() => {
+    const result = api.takeOAuthResult();
+    if (result.error) {
+      setError(OAUTH_MESSAGES[result.error] ?? OAUTH_FAILED);
+      return;
+    }
+    if (!result.token) return;
+    api
+      .me(result.token)
+      .then((account) => onSignedIn({ token: result.token as string, account }))
+      .catch(() => setError(OAUTH_FAILED));
+  }, [onSignedIn]);
 
   const go = (next: Mode) => {
     setMode(next);
@@ -132,6 +169,22 @@ export function AuthPage({ onSignedIn }: { onSignedIn: (session: Session) => voi
                     : "Set new password"}
           </button>
         </form>
+
+        {providers.length > 0 && (
+          <div className="auth-providers" data-testid="oauth-providers">
+            <span className="auth-divider">or</span>
+            {providers.map((provider) => (
+              <a
+                key={provider.name}
+                className="provider"
+                data-testid={`oauth-${provider.name}`}
+                href={api.oauthStartUrl(provider.name, window.location.origin)}
+              >
+                Continue with {provider.label}
+              </a>
+            ))}
+          </div>
+        )}
 
         <div className="auth-switch">
           {mode === "signin" && (

@@ -180,6 +180,23 @@ class Settings(BaseSettings):
     #: signs up first and gives the test suite an order dependency it should
     #: not have.
     analyst_emails: Annotated[tuple[str, ...], NoDecode] = ()
+    # --- oauth ------------------------------------------------------------
+    # Absent by default. A provider without both halves is not advertised and
+    # its endpoints 404, so a deployment that has not set one up does not show
+    # a button that cannot work.
+    oauth_github_client_id: str = ""
+    oauth_github_client_secret: str = ""
+    oauth_google_client_id: str = ""
+    oauth_google_client_secret: str = ""
+    #: Where the provider sends the browser back to. Built from configuration
+    #: rather than from the request: the `Host` header is attacker-controlled,
+    #: and deriving a callback URL from it is how a flow gets redirected
+    #: off-site. Must match what is registered with the provider.
+    public_api_base: str = "http://127.0.0.1:8077"
+    #: Where to land after signing in. Also the fallback when a requested
+    #: destination is not one of the trusted origins.
+    public_web_base: str = "http://127.0.0.1:5173"
+
     mcp_role: str = "viewer"
     mcp_tenant: str | None = None
 

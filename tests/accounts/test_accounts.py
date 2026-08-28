@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ledger.accounts import passwords, service
+from ledger.accounts import oauth, passwords, service
 from ledger.config import get_settings
 from ledger.db.base import PasswordReset, User
 from ledger.security.principal import Role
@@ -228,3 +228,93 @@ async def test_an_allowlisted_address_is_an_analyst_however_late_it_signs_up(
 
     other = await service.sign_up(session, email="other@example.com", password=PASSWORD)
     assert other.role == Role.VIEWER
+
+
+def _profile(
+    provider: str = "github",
+    subject: str = "42",
+    email: str | None = "person@example.com",
+    display_name: str | None = "A Person",
+) -> oauth.Profile:
+    return oauth.Profile(provider=provider, subject=subject, email=email, display_name=display_name)
+
+
+async def test_an_oauth_identity_resolves_to_the_same_account_every_time(
+    session: AsyncSession,
+) -> None:
+    first = await service.link_identity(session, _profile())
+    again = await service.link_identity(session, _profile())
+    assert first.id == again.id
+
+
+async def test_a_changed_email_at_the_provider_does_not_change_the_account(
+    session: AsyncSession,
+) -> None:
+    """The lookup is on the subject, so the address is recorded, not consulted."""
+    original = await service.link_identity(session, _profile(email="old@example.com"))
+    later = await service.link_identity(session, _profile(email="new@example.com"))
+    assert later.id == original.id
+
+
+async def test_an_oauth_login_cannot_take_over_an_account_by_asserting_its_email(
+    session: AsyncSession,
+) -> None:
+    """The property the whole design turns on.
+
+    Matching a provider identity to an account by email means anyone who can
+    make a provider assert an address owns the account holding it. Here the
+    address is already taken by a password account, so the flow stops rather
+    than adopting it.
+    """
+    victim = await service.sign_up(session, email="victim@example.com", password=PASSWORD)
+
+    with pytest.raises(service.EmailTakenError):
+        await service.link_identity(session, _profile(subject="999", email="victim@example.com"))
+
+    # And the victim's account is untouched: same id, still password-signed-in.
+    assert await service.authenticate(session, email="victim@example.com", password=PASSWORD)
+    assert (await service.get_by_email(session, "victim@example.com")).id == victim.id  # type: ignore[union-attr]
+
+
+async def test_the_same_subject_at_two_providers_is_two_accounts(
+    session: AsyncSession,
+) -> None:
+    """Subjects are provider-scoped; GitHub's user 42 is not Google's."""
+    github = await service.link_identity(session, _profile(provider="github", email=None))
+    google = await service.link_identity(session, _profile(provider="google", email=None))
+    assert github.id != google.id
+
+
+async def test_an_account_created_without_an_email_cannot_be_signed_into_with_a_password(
+    session: AsyncSession,
+) -> None:
+    """A private GitHub address still gets an account -- but not a way in.
+
+    The password hash is random, so the sign-in form can never match it. The
+    alternative, a null or empty hash, is the shape that turns into an
+    authentication bypass the first time a comparison is written carelessly.
+    """
+    user = await service.link_identity(session, _profile(email=None))
+    assert user.password_hash
+    assert not await service.authenticate(session, email=user.email, password=PASSWORD)
+
+
+async def test_linking_a_provider_to_an_existing_account(session: AsyncSession) -> None:
+    user = await service.sign_up(session, email="linker@example.com", password=PASSWORD)
+    await service.attach_identity(session, user, _profile(subject="7", email="linker@example.com"))
+
+    assert await service.identities_for(session, user.id) == ["github"]
+    # And signing in through the provider now lands on that same account.
+    resolved = await service.link_identity(session, _profile(subject="7"))
+    assert resolved.id == user.id
+
+
+async def test_a_provider_identity_cannot_be_linked_to_two_accounts(
+    session: AsyncSession,
+) -> None:
+    first = await service.sign_up(session, email="one@example.com", password=PASSWORD)
+    second = await service.sign_up(session, email="two@example.com", password=PASSWORD)
+
+    await service.attach_identity(session, first, _profile(subject="55", email=None))
+    with pytest.raises(service.AccountError):
+        await service.attach_identity(session, second, _profile(subject="55", email=None))

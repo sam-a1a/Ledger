@@ -24,8 +24,9 @@ from datetime import UTC, datetime, timedelta
 from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from ledger.accounts import passwords
+from ledger.accounts import oauth, passwords
 from ledger.config import get_settings
 from ledger.db.base import Conversation, OAuthIdentity, PasswordReset, User, utcnow
 from ledger.logging import get_logger
@@ -115,6 +116,93 @@ async def default_role(session: AsyncSession, address: str) -> Role:
     # Subsequent accounts start restricted -- the safe default, and the
     # interesting one for demonstrating the boundary.
     return Role.ANALYST if await count_users(session) == 0 else Role.VIEWER
+
+
+async def link_identity(session: AsyncSession, profile: oauth.Profile) -> User:
+    """Resolve a provider identity to an account, creating one if needed.
+
+    The lookup is on `(provider, subject)` and nothing else. Falling back to
+    matching the email would mean that anyone who can get a provider to assert
+    an address takes over the account holding it -- and because addresses are
+    reassigned, that does not even require an attacker.
+
+    A provider that reports no verified address still gets an account. The
+    alternative is refusing to sign in someone whose GitHub email is private,
+    which is a configuration they are entitled to.
+    """
+    existing = await session.scalar(
+        select(OAuthIdentity)
+        .where(OAuthIdentity.provider == profile.provider)
+        .where(OAuthIdentity.subject == profile.subject)
+        .options(selectinload(OAuthIdentity.user))
+    )
+    if existing is not None:
+        if profile.email and existing.email != profile.email:
+            # Recorded for the audit trail; it is not used to find the account.
+            existing.email = profile.email
+        await session.flush()
+        return existing.user
+
+    address = normalise_email(profile.email) if profile.email else None
+    if address is not None and await get_by_email(session, address) is not None:
+        # A password account already holds this address. Silently adopting it
+        # would be exactly the takeover the subject-only lookup prevents, so
+        # the person is asked to sign in and link deliberately instead.
+        raise EmailTakenError(address)
+
+    placeholder = f"{profile.provider}-{profile.subject}@oauth.invalid"
+    user = User(
+        email=address or placeholder,
+        # No password, and none that can be guessed into: a random hash means
+        # the sign-in form can never authenticate this account.
+        password_hash=passwords.hash_password(secrets.token_urlsafe(32)),
+        display_name=(profile.display_name or address or profile.provider)[:80],
+        role=(await default_role(session, address or placeholder)).value,
+        preferences={},
+    )
+    session.add(user)
+    await session.flush()
+
+    session.add(
+        OAuthIdentity(
+            user_id=user.id,
+            provider=profile.provider,
+            subject=profile.subject,
+            email=address,
+        )
+    )
+    await session.flush()
+    log.info("account created via %s: %s (%s)", profile.provider, user.id, user.role)
+    return user
+
+
+async def attach_identity(session: AsyncSession, user: User, profile: oauth.Profile) -> None:
+    """Link a provider identity to an account that already exists."""
+    existing = await session.scalar(
+        select(OAuthIdentity)
+        .where(OAuthIdentity.provider == profile.provider)
+        .where(OAuthIdentity.subject == profile.subject)
+    )
+    if existing is not None and existing.user_id != user.id:
+        raise AccountError("That account is already linked to someone else.")
+    if existing is None:
+        session.add(
+            OAuthIdentity(
+                user_id=user.id,
+                provider=profile.provider,
+                subject=profile.subject,
+                email=normalise_email(profile.email) if profile.email else None,
+            )
+        )
+        await session.flush()
+
+
+async def identities_for(session: AsyncSession, user_id: str) -> list[str]:
+    """Provider names linked to an account, for the settings page."""
+    result = await session.scalars(
+        select(OAuthIdentity.provider).where(OAuthIdentity.user_id == user_id)
+    )
+    return sorted(result.all())
 
 
 async def count_users(session: AsyncSession) -> int:

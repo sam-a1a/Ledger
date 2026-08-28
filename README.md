@@ -134,6 +134,27 @@ domain grant.
 LEDGER_ANALYST_EMAILS="ops@example.com,@staff.example.com"
 ```
 
+**Sign in with GitHub or Google**, if either is configured. A provider without
+client credentials is not advertised and its endpoints return 404, so a clean
+clone shows password sign-in only rather than a button that fails after the
+redirect.
+
+```bash
+LEDGER_OAUTH_GITHUB_CLIENT_ID=...      # github.com/settings/developers
+LEDGER_OAUTH_GITHUB_CLIENT_SECRET=...
+LEDGER_PUBLIC_API_BASE=https://ledger.example.com   # the callback is built from this
+```
+
+Four things in that flow are decisions rather than plumbing. **An identity is
+keyed on the provider's subject, never on the email** — matching on email means
+anyone who can get a provider to assert an address takes over the account
+holding it, and because addresses are reassigned, that does not even require an
+attacker. **An unverified address is not accepted at all.** **The PKCE verifier
+lives in an HttpOnly cookie**, not in `state`, which travels through the
+provider and back. And **the post-login redirect is checked against a fixed
+list**, because an open redirect on the end of a login flow is the most
+convincing possible place to put one. Each is a test.
+
 Three decisions in here are about governance rather than features:
 
 **History is reconstructed server-side and never accepted from the client.** A

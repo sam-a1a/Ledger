@@ -93,6 +93,12 @@ services:
       - ANTHROPIC_API_KEY
       - LEDGER_JWT_SECRET
       - LEDGER_ANALYST_EMAILS
+      - LEDGER_OAUTH_GITHUB_CLIENT_ID
+      - LEDGER_OAUTH_GITHUB_CLIENT_SECRET
+      - LEDGER_OAUTH_GOOGLE_CLIENT_ID
+      - LEDGER_OAUTH_GOOGLE_CLIENT_SECRET
+      - LEDGER_PUBLIC_API_BASE
+      - LEDGER_PUBLIC_WEB_BASE
     # Pass-through form, deliberately. `KEY: ${VAR:-}` sets the variable to an
     # *empty string* when the host has not defined it, which overrides the
     # application default rather than falling back to it. An empty signing key
