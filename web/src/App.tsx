@@ -6,6 +6,7 @@ import { AuthPage } from "./auth/AuthPage";
 import { SettingsPage } from "./auth/SettingsPage";
 import { useSession } from "./auth/useSession";
 import { Sidebar } from "./chats/Sidebar";
+import { CatalogDrawer } from "./components/CatalogDrawer";
 import { Composer } from "./components/Composer";
 import { Transcript } from "./components/Transcript";
 import { useChat } from "./state/useChat";
@@ -13,6 +14,7 @@ import { useChat } from "./state/useChat";
 export default function App() {
   const { session, checking, setSession, updateAccount, signOut } = useSession();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const chat = useChat(session?.token ?? null);
 
   if (checking) {
@@ -47,6 +49,14 @@ export default function App() {
           <h1>Ledger</h1>
           <span className="tagline">streaming chat over governed data</span>
           <span className="spacer" />
+          <button
+            type="button"
+            className="catalog-toggle"
+            data-testid="catalog-toggle"
+            onClick={() => setCatalogOpen((open) => !open)}
+          >
+            Columns
+          </button>
           <span className="role-badge" data-testid="role-badge">
             {session.account.role}
           </span>
@@ -82,6 +92,12 @@ export default function App() {
           </>
         )}
       </main>
+
+      <CatalogDrawer
+        token={session.token}
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+      />
     </div>
   );
 }

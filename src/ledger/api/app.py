@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ledger import __version__
-from ledger.api.routes import accounts, audit, chat, conversations, health
+from ledger.api.routes import accounts, audit, catalog, chat, conversations, health
 from ledger.api.state import AppState
 from ledger.catalog import store as catalog_store
 from ledger.config import REPO_ROOT, Settings, get_settings
@@ -155,6 +155,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(audit.router, prefix="/api")
+    app.include_router(catalog.router, prefix="/api")
     app.include_router(accounts.router, prefix="/api/accounts")
     app.include_router(conversations.router, prefix="/api")
     return app

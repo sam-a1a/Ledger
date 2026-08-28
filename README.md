@@ -161,6 +161,16 @@ domain grant.
 LEDGER_ANALYST_EMAILS="ops@example.com,@staff.example.com"
 ```
 
+A **catalogue drawer** lists what the current role can ask about — type, null
+fraction, cardinality, description, and where that description came from
+(`human`, `generated`, or `derived`, the last being a gap worth filling). It is
+served by `GET /api/catalog`, not by the `list_columns` tool: asking through the
+model spends a turn, and money, to answer a question the server already knows.
+It is scoped by the same `scope_catalog` the tool layer uses, so the two cannot
+drift — and a viewer's list is visibly shorter than an analyst's, which makes
+the access boundary something you can see rather than something you find out by
+being refused.
+
 **Sign in with GitHub or Google**, if either is configured. A provider without
 client credentials is not advertised and its endpoints return 404, so a clean
 clone shows password sign-in only rather than a button that fails after the

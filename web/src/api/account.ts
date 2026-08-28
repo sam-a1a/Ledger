@@ -210,3 +210,25 @@ export const auditFor = (token: string, conversationId: string) =>
     {},
     token,
   );
+
+export interface CatalogColumn {
+  name: string;
+  type: string;
+  semantic_type: string;
+  description: string | null;
+  description_source: string | null;
+  unit: string | null;
+  caveat: string | null;
+  null_fraction: number;
+  approx_distinct: number;
+  sample_values: unknown[];
+}
+
+export interface Catalog {
+  version: string;
+  role: string;
+  columns: CatalogColumn[];
+  total_rows: number;
+}
+
+export const catalog = (token: string) => request<Catalog>("/api/catalog", {}, token);
