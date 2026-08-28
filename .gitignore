@@ -30,10 +30,7 @@ web/.vite/
 
 # OS / editor
 .DS_Store
-.idea/shelf/
-.idea/workspace.xml
-.idea/httpRequests/
-.idea/dataSources/
+.idea/
 
 # Playwright
 web/test-results/
