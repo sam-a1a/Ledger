@@ -15,10 +15,12 @@ from typing import Literal
 
 from fastapi import APIRouter, Response, status
 from pydantic import BaseModel
+from sqlalchemy import func, select
 
 from ledger import __version__
 from ledger.api.deps import StateDep
 from ledger.config import get_settings
+from ledger.db.base import User
 from ledger.engine.duck import run_scalar
 from ledger.security import jwt as jwt_helper
 from ledger.security.principal import Role
@@ -78,6 +80,18 @@ async def ready(response: Response, state: StateDep) -> ReadyResponse:
         checks.append(ReadyCheck(name="auth", ok=True, detail="signing key usable"))
     except Exception as exc:
         checks.append(ReadyCheck(name="auth", ok=False, detail=str(exc)[:200]))
+
+    # The database: queried, not merely connected. Accounts and conversations
+    # live here, and the application cannot serve a single request without the
+    # schema -- so readiness that ignores it can report healthy on a container
+    # whose migration never ran. The release smoke job passed exactly that way
+    # before accounts landed.
+    try:
+        async with state.sessions() as session:
+            await session.execute(select(func.count()).select_from(User))
+        checks.append(ReadyCheck(name="database", ok=True, detail="schema present"))
+    except Exception as exc:
+        checks.append(ReadyCheck(name="database", ok=False, detail=str(exc)[:200]))
 
     # The broker: connected at startup, and the producer must still be live.
     producer_ok = getattr(state.producer, "_closed", False) is not True

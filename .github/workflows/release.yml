@@ -97,6 +97,19 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     services:
+      # The API has needed a database since accounts landed: it migrates at
+      # startup and will not serve without one. The job caught that on the
+      # first tag after, which is what it is for.
+      postgres:
+        image: postgres:18.6-alpine
+        ports: ["5455:5432"]
+        env:
+          POSTGRES_USER: ledger
+          POSTGRES_PASSWORD: ledger
+          POSTGRES_DB: ledger
+        options: >-
+          --health-cmd "pg_isready -U ledger" --health-interval 5s
+          --health-timeout 5s --health-retries 20
       kafka:
         image: apache/kafka:4.3.1
         ports: ["9092:9092"]
@@ -148,6 +161,7 @@ jobs:
             -e LEDGER_DATA_DIR=/app/data \
             -e LEDGER_CATALOG_MODE=offline \
             -e LEDGER_STATE_DIR=/app/state \
+            -e LEDGER_DATABASE_URL=postgresql+asyncpg://ledger:ledger@localhost:5455/ledger \
             -v "$PWD/tests/fixtures/data:/app/data:ro" \
             -v "$PWD/.smoke-state:/app/state" \
             "$IMAGE"
@@ -180,6 +194,23 @@ jobs:
           assert not failed, failed
           print("all checks healthy:", [c["name"] for c in r["checks"]])
           PY
+
+      - name: An account can actually be created
+        # Readiness proves the schema is queryable; this proves it is usable.
+        # A migration that half-applied leaves a table that answers `count(*)`
+        # and rejects an insert, and the difference only shows on a write.
+        run: |
+          code=$(curl -s -o signup.json -w '%{http_code}' \
+            -X POST http://localhost:8000/api/accounts/signup \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"smoke@example.com","password":"correct-horse-battery"}')
+          if [ "$code" != "201" ]; then
+            echo "::error::signup returned $code"
+            cat signup.json || true
+            docker logs ledger-smoke 2>&1 | tail -40
+            exit 1
+          fi
+          python -c "import json; t=json.load(open('signup.json'))['access_token']; assert t; print('account created, token issued')"
 
       - name: Container logs on failure
         if: failure()
