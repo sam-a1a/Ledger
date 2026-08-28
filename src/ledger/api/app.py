@@ -96,7 +96,22 @@ async def _migrate(settings: Settings) -> None:
         check=False,
     )
     if result.returncode != 0:
-        detail = result.stderr.decode(errors="replace").strip()[-800:]
+        # Both streams. Alembic reports a bad configuration on *stdout* --
+        # "No 'script_location' key found" -- so reading stderr alone produced
+        # "database migration failed:" followed by nothing, which is a worse
+        # failure than not catching it at all: it looks like the error was
+        # captured when the one useful line had been dropped.
+        detail = (
+            "\n".join(
+                part
+                for part in (
+                    result.stdout.decode(errors="replace").strip(),
+                    result.stderr.decode(errors="replace").strip(),
+                )
+                if part
+            )[-800:]
+            or "alembic exited non-zero and printed nothing"
+        )
         raise ConfigurationError(
             f"database migration failed:\n{detail}\n\n"
             "Run `uv run alembic upgrade head` to see the full output, or set "
