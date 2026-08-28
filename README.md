@@ -348,7 +348,7 @@ not be verifying the artefact, and verifying after the release would be too late
 
 ```bash
 curl -O https://raw.githubusercontent.com/sam-a1a/Ledger/main/docker-compose.prod.yml
-LEDGER_VERSION=v0.1.0 docker compose -f docker-compose.prod.yml up
+LEDGER_VERSION=v0.2.0 docker compose -f docker-compose.prod.yml up
 ```
 
 That pulls images rather than building them, so a deployment is pinned to an
@@ -357,7 +357,7 @@ artefact rather than to a git checkout. Omit `LEDGER_VERSION` for `latest`.
 To cut a release:
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
 The smoke job asserts `/api/ready` reports **every** check healthy, not merely

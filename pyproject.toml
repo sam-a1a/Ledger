@@ -1,6 +1,6 @@
 [project]
 name = "ledger"
-version = "0.1.0"
+version = "0.2.0"
 description = "Streaming LLM chat over governed data: typed tools, MCP, RBAC, and a Kafka governance spine."
 readme = "README.md"
 requires-python = ">=3.13"
