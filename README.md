@@ -368,10 +368,10 @@ anyone.
 ## Testing
 
 ```bash
-make test                     # 174 tests, offline, no API key, ~2s
+make test                     # 379 tests, offline, no API key, ~25s
 uv run pytest -m "not kafka"  # the pure layer, no Docker at all
-uv run pytest -m golden       # the 15-question regression suite
-cd web && npm run e2e         # Playwright
+uv run pytest -m golden       # the 16-question regression suite
+cd web && npm run e2e         # 26 Playwright specs
 ```
 
 The adversarial half of the tool suite is where the weight sits: a hallucinated
@@ -379,6 +379,15 @@ column, an unimplemented metric, a filter matching zero rows, a million-value
 group-by, a backwards date range, `'; DROP TABLE ledger.trips; --` as a column
 name, wildcards in a `contains` value. Each asserts the error *code*, the *field*
 it points at, and that the message names the correction.
+
+**Coverage floors are per module, not one average.** An overall floor lets a
+module hide behind the others: the total sat comfortably above 80% while the
+avatar upload handler — the most commonly exploited surface in a web
+application — was at 23%. Each module now has a floor of its own, every
+exception carries a written reason, and CI publishes the table to its job
+summary so the numbers get read rather than merely enforced. A reason has to be
+something other than "it is hard": a module that is hard to test is usually a
+module that is hard to be sure about.
 
 **The golden suite** asserts tool-call sequences as ordered subsequences — a
 model may legitimately prepend a reconnaissance call without that being a

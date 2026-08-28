@@ -86,13 +86,25 @@ jobs:
           enable-cache: true
       - run: uv sync --all-extras
       - name: Run the test suite
-        run: uv run pytest --cov --cov-report=xml --cov-report=term-missing --cov-fail-under=82
+        run: uv run pytest --cov --cov-report=xml --cov-report=term-missing --cov-fail-under=85
         env:
           # Pointing at the service container makes the Testcontainers fixture a
           # no-op, so CI starts one broker rather than one per worker.
           LEDGER_KAFKA_BOOTSTRAP: localhost:9092
           LEDGER_TEST_DATABASE_URL: postgresql+asyncpg://ledger:ledger@localhost:5455/ledger_test
           LEDGER_MODEL: fake
+
+      - name: Per-module coverage floors
+        # A single overall floor lets an average hide a module that is barely
+        # tested: the total sat comfortably above it while the avatar upload
+        # handler was at 23%. Floors are per module, exceptions carry a written
+        # reason, and the table goes to the job summary so the numbers are read
+        # rather than merely enforced.
+        if: always()
+        run: |
+          uv run python -m scripts.coverage_floors >> "$GITHUB_STEP_SUMMARY"
+          uv run python -m scripts.coverage_floors > /dev/null
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
