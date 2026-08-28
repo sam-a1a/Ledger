@@ -121,6 +121,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, web]
     services:
+      postgres:
+        image: postgres:18.6-alpine
+        ports: ["5455:5432"]
+        env:
+          POSTGRES_USER: ledger
+          POSTGRES_PASSWORD: ledger
+          POSTGRES_DB: ledger_e2e
+        options: >-
+          --health-cmd "pg_isready -U ledger" --health-interval 5s
+          --health-timeout 5s --health-retries 20
       kafka:
         image: apache/kafka:4.3.1
         ports: ["29092:29092"]

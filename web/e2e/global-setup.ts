@@ -3,9 +3,11 @@ import { execFileSync } from "node:child_process";
 /**
  * Empties the end-to-end database before the suite runs.
  *
- * Not a nicety: the first account created becomes an analyst, so a suite that
- * inherited rows would produce a viewer where it expected an analyst, and the
- * failure would look like an access-control bug rather than a dirty database.
+ * Specs assert counts -- one conversation in the sidebar, two answers in a
+ * transcript -- so rows inherited from a previous run fail them for a reason
+ * that has nothing to do with the code. It truncates rather than drops:
+ * Playwright starts the web servers before this runs, so dropping would pull
+ * the schema out from under an API that has already migrated.
  */
 export default function globalSetup(): void {
   const url =
