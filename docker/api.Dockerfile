@@ -18,6 +18,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY src ./src
 COPY scripts ./scripts
+# The migrations and their config. Without these the container starts, reports
+# itself healthy right up to the lifespan, and then fails with "No
+# 'script_location' key found" -- which names alembic's configuration rather
+# than the missing file, and looks nothing like "the image is incomplete".
+COPY alembic.ini ./
+COPY migrations ./migrations
 COPY data/catalog ./data/catalog
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
