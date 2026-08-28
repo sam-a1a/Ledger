@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { signUp, uniqueEmail } from "./helpers";
 
 test.describe("streaming chat", () => {
   test("renders the answer incrementally, not as one blob", async ({ page }) => {
-    await page.goto("/");
+    await signUp(page, uniqueEmail("spec"));
     await page.getByTestId("composer-input").fill("Which pickup zones are busiest?");
     await page.getByTestId("send").click();
 
@@ -29,7 +30,7 @@ test.describe("streaming chat", () => {
   });
 
   test("tool status rows appear while work is running", async ({ page }) => {
-    await page.goto("/");
+    await signUp(page, uniqueEmail("spec"));
     await page.getByTestId("composer-input").fill("Which pickup zones are busiest?");
     await page.getByTestId("send").click();
 
@@ -40,7 +41,7 @@ test.describe("streaming chat", () => {
   });
 
   test("the demo banner is shown when the model is scripted", async ({ page }) => {
-    await page.goto("/");
+    await signUp(page, uniqueEmail("spec"));
     await page.getByTestId("composer-input").fill("How many trips are there?");
     await page.getByTestId("send").click();
     await expect(page.getByTestId("demo-banner")).toBeVisible();

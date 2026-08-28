@@ -1,28 +1,48 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * Not a test of behaviour -- it produces the README screenshots, so they are
- * always of the real running app rather than a stale mock-up.
- * Excluded from the normal run by its @screenshot tag.
+ * Produces the README screenshots from the real running app, so they cannot
+ * go stale. Invoked explicitly via `npm run screenshots`.
  */
 test("@screenshot capture the interface", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: 1340, height: 900 });
   await page.goto("/");
-  await page.getByTestId("composer-input").fill("Which pickup zones are busiest?");
-  await page.getByTestId("send").click();
-  await expect(page.getByTestId("assistant-turn")).toHaveAttribute("data-status", "done");
-  await expect(page.getByTestId("chart-card")).toBeVisible();
-  await page.waitForTimeout(600); // let the chart finish its entry animation
-  await page.screenshot({ path: "../docs/img/chat.png", fullPage: false });
 
-  await page.getByTestId("trace-toggle").click();
-  await expect(page.getByTestId("trace-row").first()).toBeVisible();
-  await page.screenshot({ path: "../docs/img/trace.png", fullPage: false });
+  // Sign-up, which also makes this the first account and therefore an analyst.
+  await page.getByTestId("go-signup").click();
+  await page.getByTestId("auth-email").fill("sam@example.com");
+  await page.getByTestId("auth-name").fill("Sam");
+  await page.getByTestId("auth-password").fill("correct-horse-battery");
+  await page.screenshot({ path: "../docs/img/signup.png" });
+  await page.getByTestId("auth-submit").click();
+  await expect(page.getByTestId("sidebar")).toBeVisible();
 
-  await page.getByTestId("role-viewer").click();
-  await page.getByTestId("composer-input").fill("What is the average tip by payment type?");
-  await page.getByTestId("send").click();
-  await expect(page.getByTestId("assistant-turn")).toHaveAttribute("data-status", "done");
-  await page.getByTestId("trace-toggle").click();
-  await page.screenshot({ path: "../docs/img/rbac.png", fullPage: false });
+  const ask = async (question: string) => {
+    await page.getByTestId("composer-input").fill(question);
+    await page.getByTestId("send").click();
+    await expect(page.getByTestId("assistant-turn").last()).toHaveAttribute(
+      "data-status",
+      "done",
+    );
+  };
+
+  await ask("Which pickup zones are busiest?");
+  await ask("What is the average fare by borough?");
+  await page.getByTestId("new-chat").click();
+  await ask("How did fares change after the congestion charge?");
+
+  await expect(page.getByTestId("chat-item")).toHaveCount(2);
+  await page.getByTestId("trace-toggle").last().click();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: "../docs/img/chat.png" });
+
+  // The multi-turn conversation, reopened from the sidebar.
+  await page.getByTestId("chat-item").last().click();
+  await expect(page.getByTestId("assistant-turn").first()).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: "../docs/img/conversations.png" });
+
+  await page.getByTestId("open-settings").click();
+  await expect(page.getByTestId("settings")).toBeVisible();
+  await page.screenshot({ path: "../docs/img/settings.png" });
 });

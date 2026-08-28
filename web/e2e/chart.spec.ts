@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { signUp, uniqueEmail } from "./helpers";
 
 test("a chart renders with real dimensions", async ({ page }) => {
-  await page.goto("/");
+  await signUp(page, uniqueEmail("spec"));
   await page.getByTestId("composer-input").fill("Which pickup zones are busiest?");
   await page.getByTestId("send").click();
 

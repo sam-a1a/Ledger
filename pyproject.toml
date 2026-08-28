@@ -20,6 +20,20 @@ dependencies = [
     "anthropic==1.1.0",
     "mcp==2.1.1",
     "httpx==0.28.1",
+    # --- accounts and conversations -------------------------------------
+    # Application CRUD over related tables, which is a different problem from
+    # the analytical layer: there, SQL is hand-compiled from a closed grammar
+    # because that boundary is the point. Here it is ordinary persistence, and
+    # hand-rolling it with migrations would be worse code for no benefit.
+    "sqlalchemy[asyncio]==2.0.52",
+    "asyncpg==0.31.0",
+    "alembic==1.19.1",
+    "argon2-cffi==25.1.0",
+    "email-validator==2.3.0",
+    "python-multipart==0.0.32",
+    "pillow==12.3.0",
+    "authlib==1.7.2",
+    "itsdangerous==2.2.0",
     "pyyaml==6.0.3",
 ]
 
@@ -90,6 +104,9 @@ ignore = [
 # Exploration code interpolates local Paths into SQL to inspect files one at a
 # time. Not a query surface, and nothing model-controlled reaches it.
 "notebooks/**" = ["S608", "E402"]
+# Alembic writes these; reformatting generated migrations to satisfy a linter
+# creates diff noise on every schema change for no benefit.
+"migrations/versions/*.py" = ["W291", "I001", "E501"]
 # Building SQL is this module's entire job, so S608 fires on every line of it
 # and says nothing. The safety argument is structural and documented in the
 # module docstring: identifiers are re-emitted from the catalogue rather than
@@ -130,6 +147,7 @@ markers = [
     "ai_live: hits the real Anthropic API; needs ANTHROPIC_API_KEY. Excluded by default.",
     "kafka: needs a live broker (session Testcontainers fixture, or LEDGER_KAFKA_BOOTSTRAP).",
     "kafka_isolated: needs its own topics rather than the shared session ones.",
+    "postgres: needs a live Postgres (docker compose up -d postgres).",
     "golden: golden-question regression suite.",
     "slow: takes more than a couple of seconds.",
 ]

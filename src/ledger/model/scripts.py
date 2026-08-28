@@ -24,7 +24,14 @@ Script = Callable[[list[dict[str, Any]]], ScriptedTurn]
 
 
 def _question(messages: list[dict[str, Any]]) -> str:
-    for message in messages:
+    """The question being asked *now*, which is the last one, not the first.
+
+    Scanning forwards worked only while every conversation was a single turn.
+    Once history was threaded in, a follow-up kept answering the opening
+    question -- convincingly, and with a real chart, which is the worst way for
+    it to be wrong.
+    """
+    for message in reversed(messages):
         if message.get("role") == "user" and isinstance(message.get("content"), str):
             return str(message["content"]).lower()
     return ""

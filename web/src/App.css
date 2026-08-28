@@ -106,3 +106,166 @@
   background: var(--danger-soft); color: var(--danger);
   border-radius: var(--radius); font-size: 13px;
 }
+
+/* ------------------------------------------------------------ auth */
+
+.booting {
+  height: 100%; display: grid; place-items: center;
+  color: var(--text-faint); font-size: 15px; letter-spacing: 0.02em;
+}
+
+.auth { height: 100%; display: grid; place-items: center; padding: 2rem; }
+.auth-card {
+  width: 100%; max-width: 25rem;
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1.75rem;
+}
+.auth-card h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
+.auth-tagline { color: var(--text-muted); font-size: 13px; margin: 0.2rem 0 1.4rem; }
+
+.auth-card form, .settings section { display: flex; flex-direction: column; gap: 0.85rem; }
+.auth-card label, .settings label {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  font-size: 13px; color: var(--text-muted);
+}
+.auth-card input, .settings input[type="text"], .settings input[type="email"],
+.settings input[type="password"] {
+  font: inherit; font-size: 14px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--text);
+}
+.auth-card input:focus, .settings input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.settings input:disabled { color: var(--text-faint); background: var(--border-subtle); }
+.hint { color: var(--text-faint); font-size: 11.5px; font-weight: 400; }
+
+.auth-error, .auth-notice {
+  font-size: 13px; padding: 0.5rem 0.7rem; border-radius: var(--radius);
+}
+.auth-error { background: var(--danger-soft); color: var(--danger); }
+.auth-notice { background: var(--accent-soft); color: var(--text-muted); }
+
+.auth-switch { display: flex; gap: 0.9rem; margin-top: 1.1rem; }
+.auth-switch button {
+  border: none; background: none; padding: 0;
+  color: var(--text-muted); font-size: 13px; text-decoration: underline;
+}
+.auth-switch button:hover { color: var(--accent); }
+.auth-footnote {
+  margin: 1.4rem 0 0; padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-faint); font-size: 12px; line-height: 1.5;
+}
+
+/* ------------------------------------------------------------ layout */
+
+.app {
+  display: grid;
+  grid-template-columns: 15.5rem 1fr;
+  /* `minmax(0, 1fr)`, not `1fr`: an implicit grid row is auto-sized, so a tall
+     column grows the row past the container and the composer and the account
+     section fall off the bottom of the viewport. */
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+}
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+.sidebar {
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.75rem; gap: 0.5rem; min-height: 0; overflow: hidden;
+}
+.new-chat {
+  display: flex; align-items: center; gap: 0.45rem;
+  justify-content: flex-start; font-size: 13.5px; padding: 0.5rem 0.7rem;
+}
+.chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; min-height: 0; }
+.chat-empty { color: var(--text-faint); font-size: 12.5px; padding: 0.5rem 0.2rem; }
+
+.chat-item { position: relative; display: flex; align-items: center; border-radius: var(--radius); }
+.chat-item:hover { background: var(--bg); }
+.chat-item.active { background: var(--accent-soft); }
+.chat-title {
+  flex: 1; min-width: 0; text-align: left;
+  border: none; background: none; padding: 0.45rem 0.5rem;
+  font-size: 13px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chat-menu-toggle {
+  border: none; background: none; padding: 0.25rem 0.4rem;
+  color: var(--text-faint); opacity: 0; font-size: 14px; line-height: 1;
+}
+.chat-item:hover .chat-menu-toggle, .chat-item.active .chat-menu-toggle { opacity: 1; }
+.rename-input {
+  flex: 1; font: inherit; font-size: 13px; padding: 0.35rem 0.5rem;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--bg); color: var(--text);
+}
+
+.chat-menu {
+  position: absolute; right: 0.3rem; top: 100%; z-index: 10;
+  display: flex; flex-direction: column; min-width: 8rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.2rem; gap: 1px;
+}
+.chat-menu button {
+  border: none; background: none; text-align: left;
+  padding: 0.4rem 0.55rem; font-size: 12.5px; border-radius: 4px;
+}
+.chat-menu button:hover { background: var(--bg); }
+.chat-menu button.danger, .danger-zone button.danger { color: var(--danger); }
+
+.archive-toggle {
+  border: none; background: none; text-align: left;
+  color: var(--text-faint); font-size: 12px; padding: 0.35rem 0.5rem;
+}
+.archive-toggle:hover { color: var(--text-muted); }
+
+.sidebar-account {
+  border-top: 1px solid var(--border-subtle); padding-top: 0.6rem;
+  display: flex; align-items: center; gap: 0.4rem;
+}
+.account-button {
+  flex: 1; display: flex; align-items: center; gap: 0.55rem;
+  border: none; background: none; padding: 0.3rem; min-width: 0;
+}
+.account-button:hover { background: var(--bg); border-radius: var(--radius); }
+.account-name {
+  display: flex; flex-direction: column; align-items: flex-start;
+  font-size: 12.5px; min-width: 0;
+}
+.account-name > span { color: var(--text-faint); font-size: 11px; }
+.sign-out { border: none; background: none; color: var(--text-faint); font-size: 11.5px; padding: 0.3rem; }
+.sign-out:hover { color: var(--danger); }
+
+.avatar {
+  width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex: 0 0 auto;
+}
+.avatar.placeholder {
+  display: grid; place-items: center;
+  background: var(--accent); color: #fff; font-size: 12px; font-weight: 600;
+}
+.avatar.large { width: 56px; height: 56px; font-size: 20px; }
+
+.role-badge {
+  font-family: var(--mono); font-size: 11.5px; color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 99px; padding: 0.15rem 0.6rem;
+}
+
+/* ------------------------------------------------------------ settings */
+
+.settings { flex: 1; overflow-y: auto; padding: 1.75rem; max-width: 34rem; }
+.settings-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem; }
+.settings-header h2 { font-size: 17px; margin: 0; flex: 1; }
+.settings section {
+  padding: 1.2rem 0; border-top: 1px solid var(--border-subtle);
+}
+.settings h3 { font-size: 13.5px; margin: 0 0 0.3rem; }
+.settings .checkbox { flex-direction: row; align-items: center; gap: 0.5rem; font-size: 13.5px; color: var(--text); }
+.settings button { align-self: flex-start; }
+.avatar-row { display: flex; align-items: center; gap: 1rem; }
+.avatar-row .hint { display: block; margin: 0.4rem 0 0; max-width: 22rem; }
+.danger-zone p { color: var(--text-muted); font-size: 13px; margin: 0; max-width: 30rem; line-height: 1.55; }

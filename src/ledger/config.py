@@ -8,9 +8,10 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from ledger.errors import ConfigurationError
 
@@ -39,7 +40,12 @@ class ModelBackend(StrEnum):
 
 
 class AuthMode(StrEnum):
-    """Whether the unauthenticated dev-login endpoint is available."""
+    """How much a password-reset response is allowed to give away.
+
+    In `dev` the reset token comes back in the response body, so a reset can be
+    completed with no mail server in the loop. In `strict` it is logged and
+    nothing else, and the signing key must not be the built-in one.
+    """
 
     DEV = "dev"
     STRICT = "strict"
@@ -106,6 +112,29 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("analyst_emails", "cors_origins", mode="before")
+    @classmethod
+    def _split_commas(cls, value: object) -> object:
+        """Accept `a@x.com,@y.com` as well as a JSON list.
+
+        Pydantic parses a tuple field from the environment as JSON, and a
+        container environment or `.env` line is written as a plain comma list
+        by anyone who has not read that far. Failing on it is a startup crash
+        with a JSON parse error, which names the wrong problem.
+
+        `NoDecode` on the fields is what makes this validator reachable at
+        all: without it the JSON decode happens in the settings source, before
+        any validator runs, and the crash arrives with no way to intercept it.
+        """
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return ()
+            if text.startswith("["):
+                return value
+            return tuple(part.strip() for part in text.split(",") if part.strip())
+        return value
+
     @field_validator("jwt_secret", mode="before")
     @classmethod
     def _blank_secret_falls_back(cls, value: object) -> object:
@@ -138,14 +167,30 @@ class Settings(BaseSettings):
     #: development, where the app is served by Vite and talks to the API
     #: directly -- in production nginx serves both from one origin and this
     #: stays empty.
-    cors_origins: tuple[str, ...] = (
+    cors_origins: Annotated[tuple[str, ...], NoDecode] = (
         "http://127.0.0.1:5173",
         "http://localhost:5173",
         "http://127.0.0.1:4173",
         "http://localhost:4173",
     )
+    #: Addresses granted the analyst role on signup. An entry is either a full
+    #: address (`ops@example.com`) or a domain (`@example.com`), matched
+    #: case-insensitively. Without it the only way to promote someone is the
+    #: first-account rule below, which forces a deployment to care about who
+    #: signs up first and gives the test suite an order dependency it should
+    #: not have.
+    analyst_emails: Annotated[tuple[str, ...], NoDecode] = ()
     mcp_role: str = "viewer"
     mcp_tenant: str | None = None
+
+    # --- database ---------------------------------------------------------
+    #: Accounts and conversations. Separate from the analytical store by
+    #: design: that one is read-only, in-memory, and shared between processes.
+    database_url: str = "postgresql+asyncpg://ledger:ledger@localhost:5455/ledger"
+    database_echo: bool = False
+    #: Applied at startup in development so a clean clone works; production
+    #: runs `alembic upgrade head` as a deliberate step.
+    database_auto_migrate: bool = True
 
     # --- kafka ------------------------------------------------------------
     #: The host-facing listener, because that is what a developer running the
@@ -178,6 +223,11 @@ class Settings(BaseSettings):
     @property
     def catalog_dir(self) -> Path:
         return self.data_dir / "catalog"
+
+    @property
+    def state_path(self) -> Path:
+        """Writable operational state: journal, avatars, anything mutable."""
+        return self.state_dir if self.state_dir is not None else self.data_dir / "audit"
 
     @property
     def journal_path(self) -> Path:

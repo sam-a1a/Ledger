@@ -38,6 +38,31 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ledger}
+      POSTGRES_DB: ledger
+    ports:
+      # Not 5432, and not 5442 either -- both were already in use on the
+      # machine this was built on. A port collision here does not fail
+      # cleanly: the client connects to somebody else's database.
+      - "5455:5432"
+    volumes:
+      # /var/lib/postgresql, not /var/lib/postgresql/data. Postgres 18 moved
+      # the recommended mount up one level so that pg_upgrade --link can work
+      # across a mount boundary; mounting the old path makes the container
+      # refuse to start with an initdb-version complaint.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger -d ledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
   seed:
     image: ghcr.io/${LEDGER_IMAGE_OWNER:-sam-a1a}/ledger-api:${LEDGER_VERSION:-latest}
     command: ["sh", "-c", "python -m scripts.fetch_data && ledger catalog build"]
@@ -50,9 +75,11 @@ services:
     image: ghcr.io/${LEDGER_IMAGE_OWNER:-sam-a1a}/ledger-api:${LEDGER_VERSION:-latest}
     depends_on:
       kafka: { condition: service_healthy }
+      postgres: { condition: service_healthy }
       seed: { condition: service_completed_successfully }
     environment:
       - LEDGER_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - LEDGER_DATABASE_URL=postgresql+asyncpg://ledger:${POSTGRES_PASSWORD:-ledger}@postgres:5432/ledger
       - LEDGER_DATA_DIR=/app/data
       - LEDGER_CATALOG_MODE=offline
       - LEDGER_STATE_DIR=/app/state
@@ -99,5 +126,6 @@ services:
 
 volumes:
   kafka-data:
+  postgres-data:
   ledger-data:
   ledger-state:

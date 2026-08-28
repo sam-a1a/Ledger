@@ -1,5 +1,3 @@
-import type { Role } from "../state/types";
-
 /**
  * Where the API lives.
  *
@@ -14,31 +12,8 @@ import type { Role } from "../state/types";
  */
 const BASE = import.meta.env.VITE_API_BASE ?? "";
 
-export interface Session {
-  token: string;
-  role: Role;
-  tenantId: number | null;
-  demo: boolean;
-}
-
-export async function login(role: Role): Promise<Session> {
-  const response = await fetch(`${BASE}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role }),
-  });
-  if (!response.ok) throw new Error(`login failed: ${response.status}`);
-  const body = await response.json();
-  return {
-    token: body.access_token,
-    role: body.role,
-    tenantId: body.tenant_id,
-    demo: body.demo,
-  };
-}
-
 export function askQuestion(
-  session: Session,
+  token: string,
   message: string,
   conversationId: string | null,
   signal: AbortSignal,
@@ -49,7 +24,7 @@ export function askQuestion(
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
-      Authorization: `Bearer ${session.token}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ message, conversation_id: conversationId }),
   });
