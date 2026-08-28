@@ -41,11 +41,6 @@ EXCEPTIONS: dict[str, tuple[float, str]] = {
         "behind them is covered directly, and driving stdio in-process would test the "
         "harness rather than the server",
     ),
-    "api/routes/health.py": (
-        50.0,
-        "readiness probes each check a dependency; asserting them needs the dependency "
-        "broken in a specific way, which the deployment smoke job does for real",
-    ),
     "doctor.py": (
         60.0,
         "reports on a misconfigured environment, so most branches need a broken one; "
