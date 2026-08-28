@@ -38,6 +38,7 @@ from ledger.mcp_server.schemas import (
     HavingArg,
     MetricArg,
     OrderByArg,
+    WindowArg,
 )
 from ledger.security.principal import Channel, Principal, Role
 from ledger.tools.context import ResultCache, ToolContext
@@ -119,13 +120,13 @@ async def _run(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# The eight tools. Arguments are annotated with the context-free mirrors from
+# The nine tools. Arguments are annotated with the context-free mirrors from
 # `schemas.py`, not the real models: `@mcp.tool()` validates before the handler
 # runs and cannot supply Pydantic's validation context, so the real models --
 # which read the caller's scope from it -- fail every call while the tool list
 # still looks healthy. Scoped validation happens in the executor.
 #
-# The eight tools. Descriptions are duplicated from the registry on purpose:
+# The nine tools. Descriptions are duplicated from the registry on purpose:
 # `@mcp.tool()` reads the docstring, and test_mcp_parity asserts the schemas
 # stay structurally identical to the ones the chat application advertises.
 # --------------------------------------------------------------------------
@@ -245,6 +246,41 @@ async def timeseries(
                 "metrics": _dump(metrics),
                 "filters": _dump(filters),
                 "group_by": group_by,
+            }
+        ),
+    )
+
+
+@mcp.tool()
+async def compare_periods(
+    time_column: str,
+    before: WindowArg,
+    after: WindowArg,
+    metrics: list[MetricArg],
+    filters: list[FilterArg] | None = None,
+    group_by: str | None = None,
+    limit: int = 20,
+    min_group_rows: int = 30,
+) -> dict[str, Any]:
+    """Compare two explicit time windows, with per-day rates beside the totals.
+
+    Use this for every before-and-after question rather than running two
+    queries and subtracting. Windows of unequal length cannot be compared on
+    totals; this returns both lengths and the per-day rates so the comparison
+    holds even when they differ.
+    """
+    return await _run(
+        "compare_periods",
+        _drop_none(
+            {
+                "time_column": time_column,
+                "before": before.model_dump(mode="json"),
+                "after": after.model_dump(mode="json"),
+                "metrics": _dump(metrics),
+                "filters": _dump(filters),
+                "group_by": group_by,
+                "limit": limit,
+                "min_group_rows": min_group_rows,
             }
         ),
     )

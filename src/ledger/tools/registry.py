@@ -90,13 +90,29 @@ TOOLS: tuple[ToolSpec, ...] = (
         name="timeseries",
         description=(
             "Compute metrics bucketed over time at a chosen grain, optionally "
-            "split into a few series. Use this for trends, seasonality, and any "
-            "before-and-after comparison. A row count per bucket is always "
-            "included, so check it before trusting a bucket: real data contains "
-            "bad timestamps that produce buckets built from a handful of rows."
+            "split into a few series. Use this for trends and seasonality. For "
+            "an explicit before-and-after comparison use compare_periods "
+            "instead. A row count per bucket is always included, so check it "
+            "before trusting a bucket: real data contains bad timestamps that "
+            "produce buckets built from a handful of rows."
         ),
         args_model=analytics.TimeseriesArgs,
         handler=analytics.timeseries,
+    ),
+    ToolSpec(
+        name="compare_periods",
+        description=(
+            "Compare two explicit time windows on the same metrics, with "
+            "per-day rates alongside the totals. Use this for every "
+            "before-and-after question -- 'did X change after Y', 'which zones "
+            "dropped most' -- rather than running two queries and subtracting. "
+            "Windows of different lengths cannot be compared on totals, and "
+            "this returns both lengths and the per-day rates so the comparison "
+            "is right even when they differ. Averages and percentiles are "
+            "compared as levels, since they do not scale with window length."
+        ),
+        args_model=analytics.ComparePeriodsArgs,
+        handler=analytics.compare_periods,
     ),
     ToolSpec(
         name="distribution",

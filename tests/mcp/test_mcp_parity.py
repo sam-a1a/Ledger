@@ -25,6 +25,7 @@ TOOL_FUNCTIONS = {
     "aggregate": mcp_server.aggregate,
     "top_n": mcp_server.top_n,
     "timeseries": mcp_server.timeseries,
+    "compare_periods": mcp_server.compare_periods,
     "distribution": mcp_server.distribution,
     "plot": mcp_server.plot,
 }

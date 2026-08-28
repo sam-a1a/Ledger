@@ -16,6 +16,7 @@ the mirrors cannot drift.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
@@ -74,3 +75,14 @@ class ChartSpecArg(_Wire):
 
 
 GrainArg = Grain
+
+
+class WindowArg(_Wire):
+    """A half-open time window, `[start, end)`.
+
+    Half-open so two adjacent windows neither overlap nor drop the row on the
+    boundary between them.
+    """
+
+    start: datetime
+    end: datetime

@@ -12,6 +12,7 @@ from __future__ import annotations
 import random
 import re
 import string
+from datetime import datetime
 
 import pytest
 
@@ -289,3 +290,107 @@ def test_no_stray_characters_from_hostile_column_names() -> None:
     quoted = sqlc.quote_ident(nasty)
     assert quoted.startswith('"') and quoted.endswith('"')
     assert quoted.count('"') % 2 == 0
+
+
+# --------------------------------------------------------------------------
+# compare_periods: the same properties, on a compiler that builds its select
+# list with parameters in it -- which is the one place the parameter order can
+# silently diverge from the placeholder order.
+# --------------------------------------------------------------------------
+
+
+def _windows() -> tuple[tuple[datetime, datetime], tuple[datetime, datetime]]:
+    return (
+        (datetime(2024, 12, 1), datetime(2025, 1, 1)),
+        (datetime(2025, 1, 1), datetime(2025, 2, 1)),
+    )
+
+
+def _random_comparison(
+    rng: random.Random, scope: ScopedCatalog, principal: Principal
+) -> sqlc.CompiledQuery:
+    metrics = [_random_metric(rng, scope) for _ in range(rng.randint(1, 3))]
+    filters = [_random_filter(rng, scope) for _ in range(rng.randint(0, 4))]
+    groupable = [n for n in scope.names() if scope.columns[n].approx_distinct <= 500]
+    before, after = _windows()
+    return sqlc.compile_compare_periods(
+        time_column="pickup_at",
+        metrics=metrics,
+        baseline=before,
+        comparison=after,
+        filters=filters,
+        group_by=rng.choice(groupable) if groupable and rng.random() < 0.5 else None,
+        limit=rng.randint(1, 500),
+        scope=scope,
+        principal=principal,
+    )
+
+
+def test_a_comparison_binds_every_placeholder_it_writes(
+    analyst_scope: ScopedCatalog, analyst: Principal
+) -> None:
+    """Two window bounds per metric go into the *select list*, before the WHERE.
+
+    Appending them to the same list as the predicate parameters would leave
+    the counts matching while every value landed against the wrong
+    placeholder, which is a silently wrong answer rather than an error.
+    """
+    rng = _rng()
+    for _ in range(FUZZ_CASES):
+        compiled = _random_comparison(rng, analyst_scope, analyst)
+        assert compiled.sql.count("?") == len(compiled.params)
+
+
+def test_a_comparison_binds_its_window_bounds_first_and_in_order(
+    analyst_scope: ScopedCatalog, analyst: Principal
+) -> None:
+    before, after = _windows()
+    compiled = sqlc.compile_compare_periods(
+        time_column="pickup_at",
+        metrics=[
+            Metric.model_construct(op="count", column=None, alias=None),
+            Metric.model_construct(op="avg", column="trip_distance", alias=None),
+        ],
+        baseline=before,
+        comparison=after,
+        filters=[],
+        group_by=None,
+        limit=10,
+        scope=analyst_scope,
+        principal=analyst,
+    )
+    # Four leading parameters: each metric contributes a before pair and an
+    # after pair, in select order.
+    assert compiled.params[:8] == [*before, *after, *before, *after]
+
+
+def test_a_comparison_reads_only_the_trips_relation_and_is_bounded(
+    analyst_scope: ScopedCatalog, analyst: Principal
+) -> None:
+    rng = _rng()
+    for _ in range(FUZZ_CASES):
+        compiled = _random_comparison(rng, analyst_scope, analyst)
+        assert compiled.sql.count("FROM ") == 1
+        assert f"FROM {sqlc.RELATION}" in compiled.sql
+        assert "LIMIT ?" in compiled.sql
+
+
+def test_a_comparison_carries_the_tenant_predicate_like_everything_else(
+    analyst_scope: ScopedCatalog,
+) -> None:
+    """A tool added later is where row-level scoping gets forgotten."""
+    tenant_bound = Principal(subject="t", role=Role.ANALYST, tenant_id=2)
+    rng = _rng()
+    for _ in range(FUZZ_CASES):
+        compiled = _random_comparison(rng, analyst_scope, tenant_bound)
+        assert '"tenant_id" = ?' in compiled.sql
+
+
+def test_a_viewer_comparison_never_names_a_restricted_column(
+    viewer_scope: ScopedCatalog, viewer: Principal
+) -> None:
+    rng = _rng()
+    for _ in range(FUZZ_CASES):
+        compiled = _random_comparison(rng, viewer_scope, viewer)
+        for hidden in ("tip_amount", "cbd_congestion_fee", "congestion_surcharge"):
+            assert hidden not in compiled.sql

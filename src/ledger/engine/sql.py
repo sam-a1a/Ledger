@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from ledger.catalog.models import ScopedCatalog
@@ -288,6 +289,77 @@ def compile_timeseries(
         f" ORDER BY 1 ASC LIMIT ?"
     )
     return CompiledQuery(sql=sql, params=params, output_aliases=aliases)
+
+
+def compile_compare_periods(
+    *,
+    time_column: str,
+    metrics: list[Metric],
+    baseline: tuple[datetime, datetime],
+    comparison: tuple[datetime, datetime],
+    filters: list[Filter],
+    group_by: str | None,
+    limit: int,
+    scope: ScopedCatalog,
+    principal: Principal,
+) -> CompiledQuery:
+    """Both windows in one pass, using aggregate FILTER clauses.
+
+    One scan rather than two, which matters less for cost than for
+    consistency: two queries against a moving dataset can disagree, and a
+    before/after comparison that straddles a write is exactly the kind of
+    wrong answer that looks right.
+
+    Every window bound is a parameter. The windows are half-open -- `[start,
+    end)` -- so adjacent periods neither overlap nor drop the boundary row,
+    which is the off-by-one that quietly moves a day's traffic from one side
+    of a comparison to the other.
+    """
+    col = column_expr(scope, time_column)
+    select_parts: list[str] = []
+    aliases: list[str] = []
+    group_ordinals: list[int] = []
+    # Select-list parameters come before the WHERE clause's, because that is
+    # the order they appear in the statement.
+    leading: list[Any] = []
+
+    if group_by:
+        select_parts.append(column_expr(scope, group_by))
+        aliases.append(group_by)
+        group_ordinals.append(1)
+
+    for metric in metrics:
+        base = metric_expr(metric, scope)
+        for suffix, (start, end) in (
+            ("before", baseline),
+            ("after", comparison),
+        ):
+            alias = f"{metric.default_alias()}_{suffix}"
+            select_parts.append(
+                f"{base} FILTER (WHERE {col} >= ? AND {col} < ?) AS {quote_ident(alias)}"
+            )
+            aliases.append(alias)
+            leading.extend((start, end))
+
+    # Rows outside both windows are excluded in the WHERE clause as well as by
+    # the FILTER clauses. The FILTERs alone would be correct but would scan
+    # and group the whole table to produce rows that are all NULL.
+    span = Filter.model_construct(
+        column=time_column,
+        op="between",
+        value=[min(baseline[0], comparison[0]), max(baseline[1], comparison[1])],
+    )
+    where, params = _where([*filters, span], scope, principal)
+    params.append(limit)
+
+    group_clause = (
+        f" GROUP BY {', '.join(str(o) for o in group_ordinals)}" if group_ordinals else ""
+    )
+    sql = (
+        f"SELECT {', '.join(select_parts)} FROM {RELATION}{where}"
+        f"{group_clause} ORDER BY 1 ASC LIMIT ?"
+    )
+    return CompiledQuery(sql=sql, params=[*leading, *params], output_aliases=aliases)
 
 
 def compile_histogram(

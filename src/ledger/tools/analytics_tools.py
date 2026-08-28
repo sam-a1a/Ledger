@@ -13,9 +13,18 @@ producing the right SQL:
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Self
 
-from pydantic import Field, StringConstraints, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from ledger.catalog.models import SemanticType
 from ledger.engine import sql as sqlc
@@ -164,6 +173,108 @@ class TimeseriesArgs(_Scoped):
         return resolve_column(value, scope_from(info), "group_by")
 
 
+#: Metrics that scale with how long a window is. Dividing one of these by the
+#: number of days gives a rate that two unequal windows can be compared on.
+#: Doing the same to an average or a percentile produces a number with no
+#: meaning -- "average fare per day" is not a thing -- so those are compared
+#: as levels instead, and the result says which treatment each metric got.
+EXTENSIVE_OPS = frozenset({"count", "count_distinct", "sum"})
+
+#: Below this, a percentage change is noise: two rows before and one after is
+#: a 50% drop. The default is deliberately non-zero, unlike `top_n`, because
+#: this tool exists to stop a confidently wrong comparison.
+DEFAULT_MIN_GROUP_ROWS = 30
+
+
+class Window(BaseModel):
+    """A half-open time window, `[start, end)`.
+
+    Half-open so adjacent windows neither overlap nor drop the boundary row.
+    The alternative moves a day's traffic from one side of a comparison to the
+    other depending on how the bound was written, which is invisible in the
+    result.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    start: datetime
+    end: datetime
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Self:
+        if self.end <= self.start:
+            raise ArgumentError(
+                f"the window ends at {self.end.isoformat()}, which is not after "
+                f"its start at {self.start.isoformat()}.",
+                code="invalid_argument",
+                field="end",
+            )
+        return self
+
+    @property
+    def days(self) -> float:
+        return (self.end - self.start).total_seconds() / 86_400
+
+
+class ComparePeriodsArgs(_Scoped):
+    """Two windows, compared on rates rather than on totals.
+
+    The tool exists because of a specific wrong answer. Asking which zones
+    dropped most after New York's congestion charge returns *every zone up*,
+    because the charge began on 5 January and the obvious before/after split
+    compares four days against twenty-seven. Every number is correct and the
+    answer is worthless.
+
+    A prompt instruction to compare rates is a request. This makes the correct
+    comparison the easy one, and reports both window lengths so an unequal one
+    is visible in the result rather than hidden in it.
+    """
+
+    time_column: str
+    before: Window
+    after: Window
+    metrics: list[Metric] = Field(min_length=1, max_length=3)
+    filters: list[Filter] = Field(default_factory=list, max_length=10)
+    group_by: str | None = None
+    limit: int = Field(default=20, ge=1, le=200)
+    min_group_rows: int = Field(default=DEFAULT_MIN_GROUP_ROWS, ge=0)
+
+    @field_validator("time_column")
+    @classmethod
+    def _is_temporal(cls, value: str, info: ValidationInfo) -> str:
+        scope = scope_from(info)
+        resolve_column(value, scope, "time_column")
+        if scope.columns[value].semantic_type is not SemanticType.TEMPORAL:
+            raise ArgumentError(
+                f"{value!r} is not a time column.",
+                code="type_mismatch",
+                field="time_column",
+                suggestions=scope.temporal_names(),
+            )
+        return value
+
+    @field_validator("group_by")
+    @classmethod
+    def _group_exists(cls, value: str | None, info: ValidationInfo) -> str | None:
+        return None if value is None else resolve_column(value, scope_from(info), "group_by")
+
+    @model_validator(mode="after")
+    def _windows_do_not_overlap(self) -> Self:
+        """Overlapping windows double-count the shared rows on both sides.
+
+        The result still looks like a comparison, which is what makes it worth
+        refusing rather than noting.
+        """
+        if self.before.start < self.after.end and self.after.start < self.before.end:
+            raise ArgumentError(
+                "the two windows overlap, so rows in the overlap would be counted "
+                "on both sides. Use windows that do not intersect.",
+                code="invalid_argument",
+                field="after",
+            )
+        return self
+
+
 class DistributionArgs(_Scoped):
     column: str
     filters: list[Filter] = Field(default_factory=list, max_length=10)
@@ -189,6 +300,24 @@ class DistributionArgs(_Scoped):
 
 
 # ---------------------------------------------------------------- helpers
+
+
+def _measured(value: JsonScalar) -> float | None:
+    """A number, or None where the aggregate returned NULL.
+
+    Distinct from `_as_float`, which reads NULL as zero. Across two windows
+    that distinction carries meaning: `avg(fare)` over a window with no rows
+    is NULL, and calling it zero turns "we have nothing here" into "the fare
+    was nothing", which then propagates into a -100% change.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    try:
+        return float(str(value))
+    except ValueError:
+        return None
 
 
 def _as_int(value: JsonScalar) -> int:
@@ -400,6 +529,156 @@ async def timeseries(args: TimeseriesArgs, ctx: ToolContext) -> ToolResult:
         notes.extend(await _diagnose_empty(ctx, args.filters))
 
     return _bounded_result("timeseries", compiled, names, rows, ctx, notes)
+
+
+async def compare_periods(args: ComparePeriodsArgs, ctx: ToolContext) -> ToolResult:
+    if args.group_by:
+        await _guard_cardinality(ctx, [args.group_by], ctx.settings.max_group_cardinality)
+
+    # A row count is always present, whatever was asked for. It is what
+    # `min_group_rows` is applied to, and it is what makes a percentage change
+    # computed from three rows visible rather than merely wrong.
+    metrics = list(args.metrics)
+    if not any(m.op == "count" and m.column is None for m in metrics):
+        metrics.append(Metric.model_construct(op="count", column=None, alias="row_count"))
+
+    compiled = sqlc.compile_compare_periods(
+        time_column=args.time_column,
+        metrics=metrics,
+        baseline=(args.before.start, args.before.end),
+        comparison=(args.after.start, args.after.end),
+        filters=args.filters,
+        group_by=args.group_by,
+        limit=ctx.settings.max_group_cardinality,
+        scope=ctx.scope,
+        principal=ctx.principal,
+    )
+    names, rows = await _run(ctx, compiled)
+
+    names, rows, dropped = _derive_period_columns(names, rows, args, metrics)
+    notes = _period_notes(args, metrics, dropped, len(rows))
+    if not rows and args.filters:
+        notes.extend(await _diagnose_empty(ctx, args.filters))
+
+    return _bounded_result("compare_periods", compiled, names, rows[: args.limit], ctx, notes)
+
+
+def _derive_period_columns(
+    names: list[str],
+    rows: list[list[JsonScalar]],
+    args: ComparePeriodsArgs,
+    metrics: list[Metric],
+) -> tuple[list[str], list[list[JsonScalar]], int]:
+    """Add rates and changes, drop thin groups, and order by the leading change.
+
+    Done here rather than in SQL because the ordering key is a derived value
+    and the row set is already bounded by the cardinality guard. Sorting a
+    thousand rows in Python is free; expressing this in SQL would mean
+    repeating the expression in `ORDER BY` or inlining the divisors.
+    """
+    index = {name: position for position, name in enumerate(names)}
+    lead = metrics[0].default_alias()
+    before_days = args.before.days
+    after_days = args.after.days
+
+    derived_names = list(names)
+    for metric in metrics:
+        alias = metric.default_alias()
+        if metric.op in EXTENSIVE_OPS:
+            derived_names += [f"{alias}_before_per_day", f"{alias}_after_per_day"]
+        derived_names.append(f"{alias}_change_pct")
+
+    kept: list[list[JsonScalar]] = []
+    dropped = 0
+    for row in rows:
+        counts = (
+            _measured(row[index["row_count_before"]]) or 0.0,
+            _measured(row[index["row_count_after"]]) or 0.0,
+        )
+        if counts[0] + counts[1] < args.min_group_rows:
+            dropped += 1
+            continue
+
+        extended = list(row)
+        for metric in metrics:
+            alias = metric.default_alias()
+            before = _measured(row[index[f"{alias}_before"]])
+            after = _measured(row[index[f"{alias}_after"]])
+            if metric.op in EXTENSIVE_OPS:
+                # Compared as rates: the whole point of the tool.
+                before_value = None if before is None else before / before_days
+                after_value = None if after is None else after / after_days
+                extended += [_round(before_value), _round(after_value)]
+            else:
+                # Compared as levels: an average per day is not a rate.
+                before_value, after_value = before, after
+            extended.append(_percent_change(before_value, after_value))
+        kept.append(extended)
+
+    lead_change = derived_names.index(f"{lead}_change_pct")
+    # Ascending, so the biggest falls come first: this tool is reached for by
+    # questions about what dropped, and a `None` change sorts last rather than
+    # displacing a real one.
+    kept.sort(key=lambda r: (r[lead_change] is None, r[lead_change]))
+    return derived_names, kept, dropped
+
+
+def _percent_change(before: float | None, after: float | None) -> float | None:
+    """Change as a percentage, or None where one is not defined.
+
+    A zero baseline has no percentage change -- every answer to "up from
+    nothing" is infinity -- so it is left empty rather than reported as a very
+    large number that reads like a finding.
+    """
+    if before is None or after is None or before == 0:
+        return None
+    return round((after - before) / abs(before) * 100.0, 2)
+
+
+def _round(value: float | None) -> float | None:
+    return None if value is None else round(value, 4)
+
+
+def _period_notes(
+    args: ComparePeriodsArgs, metrics: list[Metric], dropped: int, kept: int
+) -> list[str]:
+    before_days = args.before.days
+    after_days = args.after.days
+    notes = [
+        f"before: {args.before.start.date()} to {args.before.end.date()} "
+        f"({before_days:g} days); after: {args.after.start.date()} to "
+        f"{args.after.end.date()} ({after_days:g} days).",
+    ]
+
+    longer, shorter = max(before_days, after_days), min(before_days, after_days)
+    if shorter and (longer - shorter) / longer > 0.10:
+        notes.append(
+            f"the windows differ in length by {(longer - shorter) / longer * 100:.0f}%. "
+            "Totals are not comparable across them; use the per-day columns, or "
+            "re-ask with windows of equal length."
+        )
+
+    extensive = [m.default_alias() for m in metrics if m.op in EXTENSIVE_OPS]
+    intensive = [m.default_alias() for m in metrics if m.op not in EXTENSIVE_OPS]
+    if extensive:
+        notes.append(
+            f"per-day rates given for {', '.join(extensive)}; their change is "
+            "computed from the rates, not the totals."
+        )
+    if intensive:
+        notes.append(
+            f"{', '.join(intensive)} compared as levels: an average or percentile "
+            "does not scale with window length, so a per-day figure would be "
+            "meaningless."
+        )
+    if dropped:
+        notes.append(
+            f"{dropped:,} group(s) held fewer than {args.min_group_rows} rows across "
+            "both windows and were excluded; a percentage change from a handful of "
+            "rows is noise."
+        )
+    notes.append(f"{kept:,} group(s) compared, ordered by the largest fall first.")
+    return notes
 
 
 def _sparse_bucket_notes(names: list[str], rows: list[list[JsonScalar]]) -> list[str]:
