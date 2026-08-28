@@ -69,6 +69,33 @@ And a hopeless `group_by` is refused from the catalogue's cached estimate
 a version that runs the query and catches the fallout would pass a test that
 only checked the error code.
 
+**One tool exists entirely because of a wrong answer.** New York's congestion
+charge began on 5 January 2025, so the obvious before/after split compares four
+days against thirty-one. Against the real 10.7M rows:
+
+```
+totals   3,668,358 -> 374,291        = -89.8%    correct arithmetic, worthless answer
+per day    118,334 -> 93,573         = -20.9%
+note: the windows differ in length by 87%. Totals are not comparable across them.
+```
+
+`compare_periods` takes two explicit windows and returns both lengths, the
+totals, and the per-day rates, so an unequal comparison is visible in the result
+rather than hidden in it. Averages and percentiles are compared as levels
+instead — an average fare *per day* is not a rate, and dividing one by the
+window length produces a number with no meaning. Asked properly, with matched
+27-day windows, the same data says something quite different:
+
+```
+Manhattan   105,504/day -> 102,753/day    -2.6%
+Bronx           372/day ->     486/day   +30.8%
+```
+
+A prompt instruction to compare rates is a request. This makes the correct
+comparison the easy one, and the golden suite asserts the model makes the naive
+comparison first, reads the mismatch out of the tool's own notes, and re-asks
+with matched windows.
+
 ---
 
 ## Governance
@@ -240,7 +267,7 @@ results are all still real — only the model is faked. Setting a key switches t
 
 ### Using it from Claude Code
 
-The eight tools are exposed over the Model Context Protocol, so you can query
+The nine tools are exposed over the Model Context Protocol, so you can query
 this dataset from inside Claude Code — with the same typed boundary, the same
 role scoping, and the same audit trail as the web app.
 
@@ -385,7 +412,7 @@ several of which reported themselves *healthy*:
   element type".
 - `@mcp.tool()` validates arguments *before* the handler runs and cannot supply
   Pydantic's validation context, so annotating a wrapper with a scope-aware
-  model fails every call while `tools/list` still returns all eight tools.
+  model fails every call while `tools/list` still returns all nine tools.
 - The Kafka producer was built under a separate `asyncio.run()` and then used
   from the loop `mcp.run()` starts, so every MCP call hung in
   `force_metadata_update` with a traceback pointing at Kafka rather than the
@@ -405,7 +432,7 @@ several of which reported themselves *healthy*:
 src/ledger/
   catalog/     profiling, description provenance, role scoping, prompt rendering
   engine/      DuckDB lifecycle, bootstrap.sql, the SQL compiler
-  tools/       typed arguments, the eight tools, the registry, the executor
+  tools/       typed arguments, the nine tools, the registry, the executor
   governance/  events, the Kafka publisher, the journal, the consumer, the store
   model/       the ModelClient seam, FakeModel, the Anthropic adapter
   agent/       the streaming loop, prompt assembly

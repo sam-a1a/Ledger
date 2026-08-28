@@ -69,22 +69,29 @@
     answer:
       must_match: ["/borough/i"]
 
+# The single most important question in this file. Congestion pricing began on
+# 5 January, so the obvious before/after split compares four days against
+# thirty-one: every number correct, every conclusion wrong. The assertions are
+# that the model reaches for compare_periods, notices the mismatch, re-asks
+# with matched windows, and says so in the answer.
 - id: g05
   question: How did fares change after the congestion charge took effect?
   role: analyst
   script: congestion_change
   expect:
     tool_sequence:
-      - tool: timeseries
+      - tool: compare_periods
         args_subset:
           time_column: pickup_at
-          grain: month
-        min_rows: 3
-      - tool: plot
+      - tool: compare_periods
         args_subset:
-          chart: { kind: line }
+          time_column: pickup_at
+          before: { start: "2024-12-05T00:00:00" }
+          after: { start: "2025-01-05T00:00:00" }
+      - tool: plot
     answer:
-      must_match: ["/januar/i", "/2025/"]
+      must_match: ["/per.day/i", "/twenty-seven days|27 days/i"]
+      must_not_match: ["/collapsed by|fell by over 80%/i"]
 
 - id: g06
   question: How far do people travel? Show the distribution.

@@ -69,38 +69,85 @@ def busiest_zones(messages: list[dict[str, Any]]) -> ScriptedTurn:
 
 
 def congestion_change(messages: list[dict[str, Any]]) -> ScriptedTurn:
+    """The unequal-window trap, and the recovery from it.
+
+    Congestion pricing began on 5 January 2025. The obvious before/after split
+    compares four days against thirty-one, every number in it is correct, and
+    the answer is worthless. This script makes that comparison first, reads the
+    mismatch out of the tool's own notes, and re-asks with matched windows --
+    which is the behaviour the golden question asserts.
+    """
     last = last_tool_result(messages)
     if last is None:
         return ScriptedTurn(
-            thinking="Congestion pricing began on 5 January 2025, so a monthly series will show it.",
+            thinking=(
+                "Congestion pricing began on 5 January 2025. Comparing December with "
+                "the days just after it took effect."
+            ),
             tool_calls=[
                 (
-                    "timeseries",
+                    "compare_periods",
                     {
                         "time_column": "pickup_at",
-                        "grain": "month",
+                        "before": {"start": "2024-12-01T00:00:00", "end": "2025-01-01T00:00:00"},
+                        "after": {"start": "2025-01-05T00:00:00", "end": "2025-01-09T00:00:00"},
                         "metrics": [
-                            {"op": "avg", "column": "cbd_congestion_fee", "alias": "avg_fee"},
+                            {"op": "count"},
                             {"op": "avg", "column": "total_amount", "alias": "avg_total"},
                         ],
                     },
                 )
             ],
         )
-    if last.get("tool") == "timeseries" and last.get("ok"):
+
+    if last.get("tool") == "compare_periods" and last.get("ok"):
+        notes = " ".join(last.get("notes") or [])
+        if "differ in length" in notes:
+            return ScriptedTurn(
+                thinking=(
+                    "Those windows are 31 days against 4, so the totals are not "
+                    "comparable. Re-asking with two 27-day windows."
+                ),
+                tool_calls=[
+                    (
+                        "compare_periods",
+                        {
+                            "time_column": "pickup_at",
+                            "before": {
+                                "start": "2024-12-05T00:00:00",
+                                "end": "2025-01-01T00:00:00",
+                            },
+                            "after": {
+                                "start": "2025-01-05T00:00:00",
+                                "end": "2025-02-01T00:00:00",
+                            },
+                            "metrics": [
+                                {"op": "count"},
+                                {"op": "avg", "column": "total_amount", "alias": "avg_total"},
+                            ],
+                            "group_by": "pickup_borough",
+                        },
+                    )
+                ],
+            )
         return _plot(
             last,
-            kind="line",
-            x="bucket",
-            y=["avg_fee"],
-            title="Average CBD congestion fee by month",
+            kind="bar",
+            x="pickup_borough",
+            y=["row_count_change_pct"],
+            title="Change in trips per day after the congestion charge",
+            sort="y_asc",
         )
+
     return ScriptedTurn(
         text=(
-            "The Manhattan CBD congestion fee first appears in January 2025 and is not "
-            "recorded at all before then, because the column did not exist in the earlier "
-            "files. January averages below the full charge because it only took effect on "
-            "the 5th, so part of that month predates it."
+            "Compared like for like -- 5 December to 1 January against 5 January to "
+            "1 February, twenty-seven days each -- trips per day and the average total "
+            "fare are both close to flat, with the change concentrated in Manhattan. "
+            "The first comparison I tried put December against the four days right "
+            "after the charge began, which showed trips collapsing by over 80%. That "
+            "was an artefact of comparing thirty-one days with four: on a per-day "
+            "basis the same data shows no such fall."
         )
     )
 
