@@ -295,3 +295,17 @@
 }
 .identities .provider { padding: 0.35rem 0.8rem; }
 .identities .linked { color: var(--text-faint); font-size: 12px; }
+
+/* Reserves the chart's height while its chunk loads, so the transcript does
+   not jump when it arrives. */
+.chart-loading { border: 1px solid var(--border-subtle); border-radius: 6px; }
+
+/* The trace reconciled against the durable log. Muted by default: agreement is
+   the expected case and should not shout. Divergence is the finding. */
+.audit-badge {
+  margin-left: 0.6rem; padding: 0.1rem 0.4rem;
+  border-radius: 3px; font-size: 11px; font-family: var(--mono);
+}
+.audit-verified { color: var(--accent); background: var(--accent-soft); }
+.audit-pending { color: var(--text-faint); }
+.audit-diverged, .audit-missing { color: var(--danger); background: var(--danger-soft); }

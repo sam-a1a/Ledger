@@ -61,6 +61,7 @@ export default defineConfig({
 
   // Empty schema before every run, for the reason above.
   globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
 
   webServer: [
     {

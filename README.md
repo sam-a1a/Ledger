@@ -189,6 +189,18 @@ client able to replay arbitrary assistant turns could fabricate tool results the
 model then treats as its own findings — which would defeat the entire premise
 that it only ever sees what the tool layer returned.
 
+**The trace reconciles against the log rather than merely deriving from it.**
+Live rows come from the SSE stream, because reading the durable log mid-answer
+would race the consumer and make the panel lag the answer. Once the turn
+settles the panel fetches `/api/audit` for that conversation and matches call
+for call, showing `audit ✓` when they agree. Reaching that badge means the
+whole governance path ran: published to Kafka before the query executed, read
+back off the topic by a separate consumer process, materialised to parquet, and
+served from there. A Playwright test waits for it, so "the trace is a view over
+an event log" is asserted rather than claimed. A reopened conversation
+reconciles too, with no stream involved at all — two records written by
+different processes, agreeing after the fact.
+
 **Deleting a conversation does not delete the audit log.** The transcript
 belongs to the person; the record of what was queried belongs to the
 organisation. Deleting an account is the same: conversations go, the governance

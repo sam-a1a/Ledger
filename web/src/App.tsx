@@ -72,7 +72,12 @@ export default function App() {
           />
         ) : (
           <>
-            <Transcript turns={chat.state.turns} onSuggestion={chat.ask} />
+            <Transcript
+              turns={chat.state.turns}
+              onSuggestion={chat.ask}
+              token={session.token}
+              conversationId={chat.state.conversationId}
+            />
             <Composer streaming={chat.state.streaming} onAsk={chat.ask} onStop={chat.stop} />
           </>
         )}

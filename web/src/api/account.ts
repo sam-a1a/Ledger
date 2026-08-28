@@ -195,3 +195,18 @@ export function takeOAuthResult(): { token?: string; error?: string } {
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
   return { token, error };
 }
+
+export interface AuditEvent {
+  event_id: string;
+  event_type: string;
+  call_id: string | null;
+  tool: string | null;
+  outcome: string | null;
+}
+
+export const auditFor = (token: string, conversationId: string) =>
+  request<{ events: AuditEvent[]; count: number }>(
+    `/api/audit?conversation_id=${encodeURIComponent(conversationId)}`,
+    {},
+    token,
+  );
