@@ -17,14 +17,26 @@ pytestmark = pytest.mark.kafka
 
 
 async def collect(
-    client: httpx.AsyncClient, token: str, message: str
+    client: httpx.AsyncClient,
+    token: str,
+    message: str,
+    conversation_id: str | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
-    """Read a whole SSE response into (event, data) pairs."""
+    """Read a whole SSE response into (event, data) pairs.
+
+    Without `conversation_id` the server opens a new conversation, which is the
+    behaviour a first question relies on; a follow-up has to name the one it is
+    continuing.
+    """
+    body: dict[str, Any] = {"message": message}
+    if conversation_id is not None:
+        body["conversation_id"] = conversation_id
+
     frames: list[tuple[str, dict[str, Any]]] = []
     async with client.stream(
         "POST",
         "/api/chat",
-        json={"message": message},
+        json=body,
         headers={"Authorization": f"Bearer {token}", "Accept": "text/event-stream"},
         timeout=60.0,
     ) as response:
