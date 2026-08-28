@@ -146,6 +146,24 @@
 .auth-error { background: var(--danger-soft); color: var(--danger); }
 .auth-notice { background: var(--accent-soft); color: var(--text-muted); }
 
+.auth-providers {
+  display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1.2rem;
+}
+.auth-divider {
+  display: flex; align-items: center; gap: 0.7rem;
+  margin-bottom: 0.2rem;
+  color: var(--text-faint); font-size: 12px;
+}
+.auth-divider::before, .auth-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--border-subtle);
+}
+.provider {
+  display: block; padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 13px; text-align: center; text-decoration: none;
+}
+.provider:hover { border-color: var(--accent); color: var(--accent); }
+
 .auth-switch { display: flex; gap: 0.9rem; margin-top: 1.1rem; }
 .auth-switch button {
   border: none; background: none; padding: 0;
@@ -269,3 +287,11 @@
 .avatar-row { display: flex; align-items: center; gap: 1rem; }
 .avatar-row .hint { display: block; margin: 0.4rem 0 0; max-width: 22rem; }
 .danger-zone p { color: var(--text-muted); font-size: 13px; margin: 0; max-width: 30rem; line-height: 1.55; }
+
+.identities { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.identities li {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; font-size: 13px;
+}
+.identities .provider { padding: 0.35rem 0.8rem; }
+.identities .linked { color: var(--text-faint); font-size: 12px; }

@@ -152,3 +152,46 @@ export const updateConversation = (
 
 export const deleteConversation = (token: string, id: string) =>
   request<void>(`/api/conversations/${id}`, { method: "DELETE" }, token);
+
+export interface OAuthProvider {
+  name: string;
+  label: string;
+}
+
+export const oauthProviders = () =>
+  request<{ providers: OAuthProvider[] }>("/api/accounts/oauth/providers").then(
+    (r) => r.providers,
+  );
+
+export const linkedIdentities = (token: string) =>
+  request<OAuthProvider[]>("/api/accounts/me/identities", {}, token);
+
+/**
+ * Where to send the browser to begin a provider sign-in.
+ *
+ * A full navigation rather than a fetch: the flow leaves for the provider and
+ * comes back, and the state cookie the callback is checked against is set on
+ * that navigation.
+ */
+export const oauthStartUrl = (provider: string, next: string) =>
+  `${BASE}/api/accounts/oauth/${provider}/start?next=${encodeURIComponent(next)}`;
+
+/**
+ * Read a token the callback left in the URL fragment, and remove it.
+ *
+ * The fragment is never sent to a server, which is why the token arrives
+ * there. It is cleared from the address bar immediately so it does not sit in
+ * history or get copied out of it with the link.
+ */
+export function takeOAuthResult(): { token?: string; error?: string } {
+  const fragment = window.location.hash.replace(/^#/, "");
+  if (!fragment) return {};
+
+  const params = new URLSearchParams(fragment);
+  const token = params.get("access_token") ?? undefined;
+  const error = params.get("oauth_error") ?? undefined;
+  if (!token && !error) return {};
+
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  return { token, error };
+}

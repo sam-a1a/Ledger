@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
-from fastapi.responses import FileResponse
+import httpx
+from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from ledger.accounts import avatars
+from ledger.accounts import avatars, oauth
 from ledger.accounts import service as accounts
 from ledger.accounts.passwords import MIN_PASSWORD_LENGTH, PasswordError
 from ledger.api.deps import SessionDep, UserDep
@@ -309,3 +310,125 @@ async def delete_avatar(user: UserDep, session: SessionDep) -> AccountResponse:
     user.avatar_filename = None
     await session.flush()
     return to_account(user)
+
+
+class OAuthProvider(BaseModel):
+    name: str
+    label: str
+
+
+class OAuthProviders(BaseModel):
+    providers: list[OAuthProvider]
+
+
+@router.get("/oauth/providers", response_model=OAuthProviders)
+async def oauth_providers() -> OAuthProviders:
+    """Which providers this deployment can actually sign people in with.
+
+    The sign-in page asks rather than assuming, so an unconfigured provider is
+    never offered as a button that fails after the redirect.
+    """
+    settings = get_settings()
+    return OAuthProviders(
+        providers=[OAuthProvider(name=p.name, label=p.label) for p in oauth.available(settings)]
+    )
+
+
+def _oauth_provider_or_404(provider: str) -> str:
+    settings = get_settings()
+    if provider not in oauth.PROVIDERS or oauth.credentials(settings, provider) is None:
+        # 404 rather than 501: an unconfigured provider is not a route that
+        # exists here, and saying "not configured" tells a scanner what to
+        # come back for.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such sign-in method.")
+    return provider
+
+
+@router.get("/oauth/{provider}/start")
+async def oauth_start(
+    provider: str,
+    # Named `next` on the wire because that is the convention a person typing
+    # the URL expects; `next` is a builtin, so it is not the parameter name.
+    next_url: Annotated[str | None, Query(alias="next")] = None,
+) -> RedirectResponse:
+    """Send the browser to the provider, remembering the flow in a cookie."""
+    settings = get_settings()
+    _oauth_provider_or_404(provider)
+
+    url, cookie = oauth.begin(settings, provider, next_url=next_url)
+    response = RedirectResponse(url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    response.set_cookie(
+        oauth.STATE_COOKIE,
+        cookie,
+        max_age=oauth.STATE_TTL_SECONDS,
+        httponly=True,
+        # Lax rather than Strict: the callback arrives as a top-level
+        # navigation from the provider, and Strict would withhold the cookie
+        # exactly then, which is the one moment it is needed.
+        samesite="lax",
+        secure=settings.public_api_base.startswith("https://"),
+        path="/api/accounts/oauth",
+    )
+    return response
+
+
+@router.get("/oauth/{provider}/callback")
+async def oauth_callback(
+    provider: str,
+    session: SessionDep,
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+) -> RedirectResponse:
+    """Complete the flow and hand the token to the app.
+
+    The token goes back in the URL *fragment*, not the query string: a
+    fragment is not sent to the server, so it stays out of access logs, out of
+    the `Referer` header, and out of anything sitting in front of the app.
+    """
+    settings = get_settings()
+    _oauth_provider_or_404(provider)
+    cookie = request.cookies.get(oauth.STATE_COOKIE)
+    landing = oauth.next_from_state(settings, cookie)
+
+    if error or not code or not state:
+        # A person who declines at the provider is not an error to shout about.
+        log.info("oauth flow for %s ended without a code: %s", provider, error or "cancelled")
+        return _oauth_redirect(f"{landing}#oauth_error=cancelled")
+
+    try:
+        verifier = oauth.read_state(settings, cookie, provider=provider, state=state)
+        async with httpx.AsyncClient() as client:
+            profile = await oauth.exchange(
+                settings, provider, code=code, verifier=verifier, client=client
+            )
+        user = await accounts.link_identity(session, profile)
+    except accounts.EmailTakenError:
+        # A password account already holds that address. Linking is a
+        # deliberate act from inside the account, not something a login flow
+        # should do on the person's behalf.
+        return _oauth_redirect(f"{landing}#oauth_error=email_in_use")
+    except (oauth.OAuthError, accounts.AccountError) as exc:
+        log.warning("oauth sign-in failed for %s: %s", provider, exc)
+        return _oauth_redirect(f"{landing}#oauth_error=failed")
+
+    issued = _issue(user)
+    response = _oauth_redirect(f"{landing}#access_token={issued.access_token}")
+    response.delete_cookie(oauth.STATE_COOKIE, path="/api/accounts/oauth")
+    return response
+
+
+def _oauth_redirect(url: str) -> RedirectResponse:
+    return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/me/identities", response_model=list[OAuthProvider])
+async def linked_identities(user: UserDep, session: SessionDep) -> list[OAuthProvider]:
+    """Which providers this account can sign in with, for the settings page."""
+    linked = await accounts.identities_for(session, user.id)
+    return [
+        OAuthProvider(name=name, label=oauth.PROVIDERS[name].label)
+        for name in linked
+        if name in oauth.PROVIDERS
+    ]

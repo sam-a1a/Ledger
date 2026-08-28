@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as api from "../api/account";
-import type { Account } from "../api/account";
+import type { Account, OAuthProvider } from "../api/account";
 
 export function SettingsPage({
   token,
@@ -21,6 +21,22 @@ export function SettingsPage({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [providers, setProviders] = useState<OAuthProvider[]>([]);
+  const [linked, setLinked] = useState<OAuthProvider[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    Promise.all([api.oauthProviders(), api.linkedIdentities(token)])
+      .then(([available, already]) => {
+        if (!live) return;
+        setProviders(available);
+        setLinked(already);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [token]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const run = async (task: () => Promise<void>) => {
@@ -189,6 +205,35 @@ export function SettingsPage({
           <button type="button" onClick={savePassword} disabled={busy || !current || !next}>
             Change password
           </button>
+        </section>
+      )}
+
+      {(providers.length > 0 || linked.length > 0) && (
+        <section>
+          <h3>Sign-in methods</h3>
+          <ul className="identities" data-testid="identities">
+            {providers.map((provider) => {
+              const isLinked = linked.some((l) => l.name === provider.name);
+              return (
+                <li key={provider.name}>
+                  <span>{provider.label}</span>
+                  {isLinked ? (
+                    <span className="linked" data-testid={`linked-${provider.name}`}>
+                      Linked
+                    </span>
+                  ) : (
+                    <a
+                      className="provider"
+                      data-testid={`link-${provider.name}`}
+                      href={api.oauthStartUrl(provider.name, window.location.origin)}
+                    >
+                      Link
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
 
